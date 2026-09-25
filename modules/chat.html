@@ -1,0 +1,87 @@
+<interactions-c>
+</interactions-c>
+<request-c>
+  <wrap-c>
+    <prompt-c
+      class="blank"
+      spellcheck="false"
+      contenteditable="true"
+      onkeydown="
+      if (event.key === 'Enter' && event.shiftKey) {
+        event.preventDefault();
+        actions.send();
+      }"
+      oninput="
+      let t = event.target.innerText
+      if (t.length < 1) {
+        event.target.classList.add('blank')
+      } else {
+        event.target.classList.remove('blank')
+      }"
+    ></prompt-c>
+  </wrap-c>
+  <footer>
+    <utils-c>
+      <button onclick="actions.send()">
+        <img src="./icons/takeoff.svg">
+        Send</button>
+      <button onclick="actions.text_gen_abort()">
+        <img src="./icons/abort.svg">
+        Abort</button>
+      <button onclick="actions.text_gen_resume()">
+        <img src="./icons/resume.svg">
+        Resume</button>
+    </utils-c>
+    <div class="select">
+      <img src="icons/persona.svg">
+      <select class="persona" onchange="STATES.send_config.persona_id = this.options[this.selectedIndex].text">
+        <option>Persona: </option>
+      </select>
+    </div>
+    <div class="select">
+      <img src="icons/face.svg">
+      <select class="target_char" onchange="STATES.send_config.target_char_id = this.options[this.selectedIndex].text">
+        <option>Send To: </option>
+      </select>
+    </div>
+    <utils-c>
+      <button>
+        <img src="./icons/library.svg">
+        Library</button>
+      <button>
+        <img src="./icons/template.svg">
+        Req. Temp.</button>
+    </utils-c>
+    <utils-c>
+      <button>
+        <img src="./icons/mind working.svg">
+        Auto Write</button>
+    </utils-c>
+    <utils-c>
+      <button>
+        <img src="./icons/translate.svg">
+        Transl.</button>
+      <button>
+        <img src="./icons/narrate.svg">
+        Narr.</button>
+      <button>
+        <img src="./icons/paint.svg">
+        Paint</button>
+    </utils-c>
+    <utils-c>
+      <button
+      onclick='
+        TEMP.windows[0].goto("uni")
+        actions.uni_show("obj", "file", STATES.online_profile_path + `/chats/${STATES.chat_id}/chat.yaml`, undefined, "yaml")
+      '>Chat Config</button>
+      <button onclick="
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen()
+      } else {
+        if (document.exitFullscreen) {
+          document.exitFullscreen()
+        }
+      }">Fullscreen</button>
+    </utils-c>
+  </footer>
+</request-c>

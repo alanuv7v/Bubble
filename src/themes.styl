@@ -1,0 +1,204 @@
+@font-face {
+  font-family: "DM Mono";
+  src: local("DM Mono"), url(../fonts/DMMono-Regular.ttf) format("truetype");
+}
+
+@font-face {
+  font-family: "Poppins";
+  src: local("Poppins"), url(../fonts/Poppins-Regular.ttf) format("truetype");
+}
+
+@font-face {
+  font-family: "Circular";
+  src: local("Circular std"), url(../fonts/CircularStd-Book.ttf) format("truetype");
+}
+
+/* 
+-----------
+*/
+
+:root {
+  --light: white;
+  --dark: black;
+  --light-grad: linear-gradient(to bottom, hsl(0deg 0% 95%), hsl(0deg 0% 90%) 80%, hsl(0deg 0% 85%) 100%);
+  --dark-grad: linear-gradient(to top, hsl(0deg 0% 15%), hsl(0deg 0% 30%) 80%, hsl(0deg 0% 35%) 100%);
+  caret-color: var(--dark);
+}
+
+/* 
+-----------
+*/
+
+:root {
+  
+  font-family: "SUIT", /* "Poppins",  */ sans-serif;
+  font-weight: 400;
+  /* letter-spacing: 0.08ch; */
+
+  background-size: cover;
+  background-position: center;
+
+  --border-color: rgb(158, 158, 158);
+  --mild-border-color: rgb(150 150 150);
+  --active-bg-color: rgb(25, 25, 25);
+  --ui-color: var(--dark);
+  --bg-color: var(--light);
+  --button-grad: var(--light-grad);
+  --error: rgb(232, 39, 71);
+
+  --hue-shift: 0;
+  --saturation-shift: 0;
+  --lightness-shift: 0;
+
+  --border-rad: 0; //0.5lh;
+
+}
+
+
+:root.dark {
+  --ui-color: var(--light);
+  --bg-color: var(--dark);
+  --button-grad: var(--dark-grad);
+  caret-color: var(--light);
+}
+
+hsl2(hue, saturation, lightness)
+  unquote("hsl(" + "calc(var(--hue-shift) + " + hue + ")," + saturation + "%," + lightness + "%" + ")")
+
+:root.cozy {
+
+  --light: hsl2(0, 20, 72);
+  --dark: hsl2(0, 15, 17);
+  --border-color: hsl2(0, 11, 52);
+  --mild-border-color: hsl2(18, 9, 39);
+  --active-bg-color: hsl2(0, 16, 15);
+  
+  --hue-shift: 180;
+
+  background-image: url("../assets/bg/4.jpg");
+}
+
+:root.cozy.steel main {
+  filter: hue-rotate(200deg) saturate(0.7);
+}
+
+:root.cozy.forest main {
+  filter: hue-rotate(100deg) contrast(0.92) invert(0);
+}
+
+
+:root.parade {
+  /* 
+    iMessage type looking, pastel colorful.
+    The default theme.
+  */
+  --light: hsl(240, 14, 90);
+  --dark: rgb(78, 54, 77);
+  
+  --border-color: hsl(292, 88, 71);
+  --mild-border-color: rgb(140, 113, 215);
+  --active-bg-color: hsl(136, 37, 90);
+  --accent: rgb(213, 106, 205);
+  --accent-2: rgb(219, 138, 228);
+  --alert: var(--accent);
+  --quote: var(--accent);
+
+  --value: var(--ui-color);
+  --text: var(--value);
+  
+  --obj: var(--accent);
+
+  --dir: var(--accent-2);
+  --file: var(--accent);
+
+  /* filter: hue-rotate(310deg) saturate(0.75); */
+  /* filter: hue-rotate(100deg) contrast(0.92) invert(1); */
+}
+
+
+:root.pro {
+  font-family: "DM Mono", monospace;
+  font-weight: 400;
+  letter-spacing: 0.08ch;
+
+  background-image: url("../assets/bg/3.jpg");
+
+  --hue-shift: 0;
+  --saturation-shift: 0;
+  --lightness-shift: 0;
+
+  --border-rad: 0.25lh;
+  
+
+  --light: hsl2(230,  5, 90);
+  --dark: hsl2(230, 12, 20);
+  --border-color: hsl2(230, 12, 60);
+  --mild-border-color: hsl2(230, 5, 40);
+  --active-bg-color: hsl2(250, 15, 15);
+  
+  --accent: hsl2(40, 75, 75);
+  --accent-2: hsl2(60, 70, 50);
+  --alert: var(--accent);
+  --quote: var(--accent);
+
+  --value: var(--ui-color);
+  --text: var(--value);
+  
+  --obj: var(--accent);
+
+  --dir: var(--accent-2);
+  --file: var(--accent);
+}
+
+:root.artsy {
+  font-family: "Baskervville";
+  start-c.pretty {
+    position: relative;
+    h1 {
+      font-family: "soulgate";
+    }
+  }
+}
+
+:root.okay {
+  background-image: url("../assets/bg/11.jpg");
+  font-family: "Inconsolata", "SUIT", "SUIT Variable";
+}
+
+@css {
+  :root.glassy {
+    main {
+      background: color-mix(
+        in hsl,
+        var(--bg-color),
+        rgba(0,0,0,0) 50%
+      );
+    }
+    
+    input, button, select, *[contenteditable="true"], group-c, obj-c {
+      background: color-mix(
+        in hsl,
+        var(--bg-color),
+        rgba(0,0,0,0) 80%
+      );
+      backdrop-filter: blur(4px);
+    }
+
+    input:focus, button:focus, select:focus, *[contenteditable="true"]:focus {
+      background: color-mix(
+        in hsl,
+        var(--active-bg-color),
+        rgba(0,0,0,0) 30%
+      );
+    }
+    
+    message-c {
+      background-color: color-mix(
+        in hsl,
+        var(--bg-color),
+        rgba(0,0,0,0) 40%
+      );
+      backdrop-filter: blur(8px);
+    }
+  }
+}
