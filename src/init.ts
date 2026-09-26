@@ -1,6 +1,5 @@
 import { q } from "./utils/gui.ts";
 import yaml from "yaml";
-import STATES from "./STATES.ts";
 import TEMP from "./TEMP.ts";
 import tags from "./tags.ts";
 import * as db from "./database.ts";
@@ -11,7 +10,7 @@ import { marked } from "marked";
 import PATH from "path-browserify";
 import * as llm from "./llm";
 import { create_entries, create_entry, delete_entry, get_entry, query, update_entry } from "./chat.ts";
-import { render } from "../modules/Chat.ts";
+import { render } from "./face.ts";
 import { nuke_db } from "./database.ts";
 
 // DEBUG
@@ -31,12 +30,6 @@ Object.entries({
 
 //------------------------------------------------------------
 
-Object.defineProperty(window, "STATES", {
-  get() {
-    return STATES;
-  },
-});
-
 Object.defineProperty(window, "TEMP", {
   get() {
     return TEMP;
@@ -45,8 +38,18 @@ Object.defineProperty(window, "TEMP", {
 
 console.log("%cWelcom to Bubble🫧", "color: skyblue");
 
-await db.init()
-
-q("main").append(
-  ...(await render())
-);
+try {
+  await db.init()
+  q("main").append(
+    ...(await render())
+  );
+} catch (e) {
+  const err = e as Error
+  document.body.replaceChildren(
+    tags.div(err.toString()),
+    tags.div(err.stack),
+    tags.div("If this error persists, please issue at github.com/alanuv7v/Bubble/issues.")
+  )
+  console.trace()
+  console.log(err)
+}

@@ -100,7 +100,7 @@ export const TYPES = {
   array: {
     field: { 
       default: [] as any[],
-      allows: "string" as string
+      allows: {} as Object
     }
   },
   object: {
@@ -155,12 +155,12 @@ export type Id = string
 
 export type Role = 'user' | 'assistant' | 'system'
 
-export type SentMessage = {
+export type CoreMessage = {
   role: Role
   content: string
 }
 
-export type Message = Omit<SentMessage, "content"> & {
+export type Message = Omit<CoreMessage, "content"> & {
   id: Id
   content: string|null // null if role === "assistant"
   chat_id: Id
@@ -179,7 +179,7 @@ export type TextGen = {
   created_at: number // UNIX timestamp
 }
 
-export const LlmConfigSimple = {
+export const LlmParamsSimple = {
   model: {
     __type: "string",
     default: "~google/gemini-flash-latest"
@@ -187,9 +187,28 @@ export const LlmConfigSimple = {
   messages: {
     __type: "array",
     default: [
-      { role: "system", content: "You are " }
-    ] as SentMessage[],
-    allows: "object"
+      { 
+        role: "system", 
+        content: (
+          "You are {{char.name}}. Roleplay as {{char.name}}.\n"
+          + "# About {{char.name}}\n"
+          + "{{char.desc}}"
+          + "# About {{user.name}}\n"
+          + "{{user.desc}}"
+        )
+      }
+    ] as CoreMessage[],
+    allows: {
+      role: {
+        __type: "str_in",
+        among: ["system", "user", "assistant"] as Role[],
+        default: "system"
+      },
+      content: {
+        __type: "string",
+        default: ""
+      }
+    }
   },
   stream: {
     __type: "boolean",
@@ -215,7 +234,7 @@ export const LlmConfigSimple = {
 } satisfies Record<string, Partial<FieldDef>> 
 
 export const LlmParams = {
-  ...LlmConfigSimple,
+  ...LlmParamsSimple,
   top_p: {
     __type: "number",
     min: 0,
@@ -272,15 +291,36 @@ export const LlmParams = {
   },
 } satisfies Record<string, Partial<FieldDef>> 
 
+export const LlmConfig = {
+  id: {
+    __type: "string"
+  },
+  name: {
+    __type: "string"
+  },
+  api_key: {
+    __type: "string"
+  },
+  api_url: {
+    __type: "string"
+  },
+  params: {
+    __type: "object",
+    def: LlmParams
+  }
+}
+
 export type LlmConfig = {
   id: Id,
   name: string,
+  api_key: string,
+  api_url: string,
   params: LlmParams
 }
 
 export type LlmParams = {
   model: string,
-  messages: SentMessage[]
+  messages: CoreMessage[]
 
   stream?: boolean
   temperature?: number // float, 0.0 to 2.0

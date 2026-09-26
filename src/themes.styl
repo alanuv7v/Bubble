@@ -35,9 +35,11 @@
   font-weight: 400;
   /* letter-spacing: 0.08ch; */
 
-  background-size: cover;
-  background-position: center;
-
+  body {
+    background-size: cover;
+    background-position: center;
+  }
+  
   --border-color: rgb(158, 158, 158);
   --mild-border-color: rgb(150 150 150);
   --active-bg-color: rgb(25, 25, 25);
@@ -75,7 +77,9 @@ hsl2(hue, saturation, lightness)
   
   --hue-shift: 180;
 
-  background-image: url("../assets/bg/4.jpg");
+  body {
+    background-image: url("../assets/bg/4.jpg");
+  }
 }
 
 :root.cozy.steel main {
@@ -121,7 +125,9 @@ hsl2(hue, saturation, lightness)
   font-weight: 400;
   letter-spacing: 0.08ch;
 
-  background-image: url("../assets/bg/3.jpg");
+  body {
+    background-image: url("../assets/bg/3.jpg");
+  }
 
   --hue-shift: 0;
   --saturation-shift: 0;
@@ -161,7 +167,9 @@ hsl2(hue, saturation, lightness)
 }
 
 :root.okay {
-  background-image: url("../assets/bg/11.jpg");
+  body {
+    background-image: url("../assets/bg/11.jpg");
+  }
   font-family: "Inconsolata", "SUIT", "SUIT Variable";
 }
 
@@ -175,7 +183,7 @@ hsl2(hue, saturation, lightness)
       );
     }
     
-    input, button, select, *[contenteditable="true"], group-c, obj-c {
+    input, button, select, *[contenteditable="true"], group-c, obj-c, bubbies-list>div {
       background: color-mix(
         in hsl,
         var(--bg-color),

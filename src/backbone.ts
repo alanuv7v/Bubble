@@ -4,9 +4,10 @@ export default function () {
     return "Neutralino"
   }
   // Detect Chrome/Edge Native Disk Access (FileSystem Access API)
-  if ('showOpenFilePicker' in window) {
+  // ...This is discarded in favor of OPFS.
+  /* if ('showOpenFilePicker' in window) {
     return "FileSystemAPI"
-  }
+  } */
   // Detect OPFS Support (Modern Browser Private Storage)
   if (
     'navigator' in window && 

@@ -11,7 +11,7 @@
 
 * {
   /* line-height: 1lh !important; */
-  transition: box-shadow 0.125s, outline-color 0.125s;
+  transition: box-shadow 0.125s, outline 0.2s;
   animation: fadein 0.3s ease-in;
 }
 
@@ -39,6 +39,8 @@ title {
   box-sizing: border-box;
 }
 body {
+  width: 100dvw;
+  height: 100svh;
   padding: 0px;
   margin: 0px;
 }
@@ -164,6 +166,8 @@ select::after {
   display: inline-block
   cursor: text
   min-width: 5ch
+  white-space: break-spaces
+  max-width: 80ch
 }
 button {
   white-space: nowrap;
@@ -245,6 +249,9 @@ group-c.horizontal {
     align-content: center;
     padding: 0.33lh;
   }
+  > * {
+    border-radius: 0px;
+  }
   /* > label + * { */
   > *:first-child {
     border-radius: 0px;
@@ -305,15 +312,6 @@ not-connected {
       }
     }
   }
-  message-c {
-    > wrap-c {
-      flex-direction: column;
-      img.profile {
-        width: 80px;
-        height: 80px;
-      }
-    }
-  }
   body {
     min-height: 0;
     flex-direction: column;
@@ -363,6 +361,7 @@ input[type="checkbox"] {
   padding: 0px;
   width: 1.5lh
   height: 1.5lh;
+  min-height: 1.5lh;
   display: inline-grid;
   place-content: center;
   box-shadow: inset 0px 0px 0px 1px var(--mild-border-color);
@@ -489,6 +488,14 @@ in-chat {
 
   > * {
     max-width: 100%
+  }
+  img.profile {
+    width: 12ch
+    height: 12ch
+  }
+  img.profile:hover, img.profile:focus {
+    width: 24ch
+    height: 24ch
   }
 }
 enter-chat {
@@ -619,19 +626,6 @@ message-c {
       align-items: baseline;
     }
   }
-  img.profile {
-    width: 12ch
-    height: 12ch
-    flex-shrink: 0;
-    object-fit: cover;
-    border-radius: var(--border-rad);
-    background-color: var(--mild-border-color)
-    transition: width 0.2s, height 0.2s
-  }
-  img.profile:hover, img.profile:focus {
-    width: 24ch
-    height: 24ch
-  }
   name-c {
     font-weight: 600;
     flex-grow: 1;
@@ -682,9 +676,11 @@ obj-c {
   width: fit-content
   
   padding: 0.5lh
+  border-radius: var(--border-rad)
 
   > pair-c {
     display: flex
+    flex-wrap: wrap
     align-items: flex-start
     gap: 1ch
     > key-c {
@@ -704,6 +700,9 @@ arr-c {
     display: flex
   }
 }
+arr-c:has(> item-c > obj-c) {
+  flex-direction: column
+}
 
 pair-c:has(> obj-c) {
   flex-direction: column
@@ -721,13 +720,18 @@ pair-c:has(> obj-c) {
   --border-color: var(--error)
 }
 
-obj-editor {
+val-c {
+  display: block
+  min-height: 2lh
   padding: 0.5lh
+}
+
+obj-editor {
   display: flex
   flex-direction: column
-  gap: 0.25lh
-  width: 100%
-  overflow: auto
+  gap: 0.5lh
+  max-width: 100%
+  align-items: end
 }
 
 
@@ -740,4 +744,83 @@ input[type="datetime-local"]::after {
   display: block
   width: 100px
   height: 100px
+}
+
+bubbies-c {
+  display: flex
+  flex-direction: column
+  align-items: center
+}
+bubbies-list {
+  display: flex
+  flex-wrap: wrap
+  padding: 0.5lh
+  gap: 0.5lh
+  flex-grow: 1
+  > div {
+    > img {
+      width: 100%
+      aspect-ratio: 1/1
+    }
+    > div {
+      padding: 1lh
+      text-overflow: ellipsis
+      overflow: clip
+      text-align: center
+    }
+    background: var(--bg-color)
+    height: fit-content
+    cursor: pointer
+    display: flex
+    flex-direction: column
+    width: 20ch
+    outline: 1px solid var(--mild-border-color)
+    
+  }
+  > div:hover {
+    outline: 4px solid var(--border-color)
+    
+  } 
+}
+
+
+edit-bubby {
+  
+  display: flex
+  flex-direction: column
+  align-items: center
+
+  padding: 0.5lh
+  gap: 0.5lh
+
+  overflow: auto
+
+  > div {
+    width: 20ch
+    display: flex
+    flex-direction: column
+    gap: 0.5lh
+    > img {
+      width: 100%
+    }
+    > button {
+      width: 100%
+    }
+  }
+}
+
+img.profile {
+  flex-shrink: 0;
+  object-fit: cover;
+  border-radius: var(--border-rad);
+  background-color: var(--mild-border-color);
+  transition: width 0.2s, height 0.2s;
+}
+
+
+llm-configs {
+  > list-c > * {
+    padding: 1lh
+    background: var(--bg-color)
+  }
 }

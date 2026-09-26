@@ -1,5 +1,4 @@
 export default {
-  api_key: null as string|null,
   chat: {
     visual: {
       render_message_as_markdown: true,
@@ -8,8 +7,13 @@ export default {
       sanitize_message: false,
     },
     max_input_messages: 50,
-  },
-  llm_config: {
-    
+  }
+}
+
+export const user_config_def = {
+  chat: {
+    max_input_messages: {
+      __types: "int"
+    },
   }
 }

@@ -1,14 +1,14 @@
-import STATES from "./STATES";
 import TEMP from "./TEMP";
-import { Bubby, Chat, GeneralRequestTemplate, TextGen as TextGen, Id, SentMessage, Prompt, LlmParams, Message, LlmConfig, instantiate } from "./definitions";
+import { Bubby, Chat, GeneralRequestTemplate, TextGen as TextGen, Id, CoreMessage as CoreMessage, Prompt, LlmParams, Message, LlmConfig, instantiate } from "./definitions";
 import { q } from "./utils/gui";
-import tags from "./tags";
+import t from "./tags";
 import * as llm from "./llm";
 import { pipe } from "./utils/pipe";
 import format_displayed_msg from "./utils/format_displayed_msg";
 import { AsEntry, exec_sql } from "./database";
 import { merge } from "merge-anything"
 import obj_path from "./utils/obj_path";
+import { get_img_src } from "./assets";
 
 
 export type TableEntryMap = {
@@ -94,13 +94,6 @@ export function stringify_entry<K extends TableName>(
 }
 
 
-export function get_recent_chats(start: number, end: number) {
-  return query(
-    "chats",
-    `SELECT * FROM chats ORDER BY rowid DESC LIMIT ? OFFSET ?`,
-    [end - start, start]
-  )
-}
 /**
  * Recent ones first (descending creation time order) 
 */
@@ -109,38 +102,30 @@ export async function get_recent_messages(
   start: number,
   end: number
 ) {
-  return query(
-    "messages",
+  const res = await (exec_sql(
     `SELECT * FROM messages 
       WHERE chat_id = ? 
       ORDER BY created_at 
       DESC LIMIT ? 
       OFFSET ?`,
     [chat_id, end - start, start]
-  )
+  )) as unknown as Message[]
+  return res.toReversed()
 }
 
-export function get_messages_before(
+export async function get_messages_before(
   chat_id: Id,
   last_created_at: number,
   limit = 50
 ) {
-  return query(
-    "messages",
+  const res = await exec_sql(
     `SELECT * FROM messages
       WHERE chat_id = ? AND created_at < ?
       ORDER BY created_at 
       DESC LIMIT ?`,
     [chat_id, last_created_at, limit]
-  )
-}
-
-export function get_bubbies(start: number, end: number) {
-  return query(
-    "bubbies",
-    `SELECT * FROM bubbies ORDER BY rowid DESC LIMIT ? OFFSET ?`,
-    [end - start, start]
-  )
+  ) as unknown as Message[]
+  return res.toReversed()
 }
 
 export async function get_entry<K extends TableName>(table: K, id: Id) {
@@ -153,13 +138,21 @@ export async function get_entry<K extends TableName>(table: K, id: Id) {
   return rows[0] ?? null
 }
 
-export function get_entries<K extends TableName>(table: K, ids: Id[]) {
+export function get_entries<K extends TableName>(table: K, ids: Id[], ) {
   if (!ids.length) return []
   const placeholders = ids.map(() => '?').join(',')
   return query(
     table,
     `SELECT * FROM ${table} WHERE id IN (${placeholders})`,
     ids
+  )
+}
+
+export function get_recent_entries<K extends TableName>(table: K, start: number, end: number) {
+  return query(
+    table,
+    `SELECT * FROM ${table} ORDER BY rowid DESC LIMIT ? OFFSET ?`,
+    [end - start, start]
   )
 }
 
@@ -355,95 +348,118 @@ type TextGenContext = {
   chat: Chat,
 }
 
-const keywords_replacers = {
-  prompts: async (path: string[]) => {
-    const id = path[1]
-    const res = await get_entry("prompts", id)
-    if (!res) return ""
-    return res?.content
-  },
-  libraries: async (path: string[], history: SentMessage[]) => {
-    const lib_ids = await exec_sql(
-      "SELECT * FROM chat_libraries WHERE chat_id = ?", 
-      [TEMP.chat.id]
-    ) as unknown as string[]
-    if (lib_ids.length === 0) return ""
-
-    const prompt_ids = await get_junction_entries("library_prompts", "library_id", lib_ids) as unknown as string[]
-    
-    const prompts = (await get_entries("prompts", prompt_ids)) as Prompt[]
-    
-    const content = prompts
-      .filter(p => {
-        if (p.trigger.length === 0) return true
-        // trigger detection from the history
-        let triggered = p.trigger.find(t =>
-          history.map(h => h.content).join("").match(t)
-        )
-        if (triggered) return true
-        return false
-      })
-      .map(p => `# ${p.id}` + "\n" + p.content)
-      .join("\n")
-
-    return content
+function is_prompt_triggered(prompt: Prompt, msgs: CoreMessage[]) {
+  if (!Array.isArray(prompt.trigger) || prompt.trigger.length === 0) {
+    return false
   }
+  return prompt.trigger.some((t) =>
+    msgs.some((m) => m.content.match(t))
+  )
 }
 
-async function replace_content_variables(
-  ctx: TextGenContext,
-  whole: string,
-  loop = 100
-) {
-
-  const keywords = [
-    ...Object.keys(ctx),
-    ...Object.keys(keywords_replacers)
-  ]
-
-  while (loop > 0) {
-    for await (let keyword of keywords) {
-      const path = keyword.split(".")
-      let replacer_text = obj_path.get(ctx, path) 
-        ?? await keywords_replacers[keyword] 
-        ?? ""
-      whole = whole.replace(keyword, replacer_text)
-      loop = loop - 1
-    }
+function resolve_ctx_path(obj: Record<string, any>, path: string[]) {
+  let curr = obj
+  for (const key of path) {
+    if (curr == null) return ""
+    curr = curr[key]
   }
-  return [whole, loop] as [string, number]
+  if (typeof curr === "string") return curr
+  if (typeof curr === "object" && curr !== null) return curr.id ?? ""
+  return ""
+}
+
+const keywords_replacers: Record<
+  string, (path: string[], msgs: CoreMessage[]) => Promise<string | undefined>
+> = {
+  prompts: async (path, msgs) => {
+    const id = path[1]
+    if (!id) return ""
+    const prompt = await get_entry("prompts", id)
+    if (!prompt) return ""
+    return is_prompt_triggered(prompt, msgs) ? prompt.content : ""
+  },
+  libraries: async (_, msgs) => {
+    const lib_ids = (await exec_sql(
+      "SELECT * FROM chat_libraries WHERE chat_id = ?",
+      [TEMP.chat.id]
+    )) as unknown as string[]
+    if (lib_ids.length === 0) return ""
+
+    const prompt_ids = (await get_junction_entries(
+      "library_prompts",
+      "library_id",
+      lib_ids
+    )) as unknown as string[]
+    const prompts = (await get_entries("prompts", prompt_ids)) as Prompt[]
+
+    return prompts
+      .filter((p) => is_prompt_triggered(p, msgs))
+      .map((p) => `# ${p.id}\n${p.content}`)
+      .join("\n")
+  },
+}
+
+async function replace_vars_from_text(
+  ctx: TextGenContext,
+  msgs: CoreMessage[],
+  text: string
+) {
+  const matches = [...text.matchAll(/\{\{(.+?)\}\}/g)]
+  if (matches.length === 0) return text
+
+  const tags = [...new Set(matches.map((m) => m[1].trim()))]
+  const ctx_alias = {
+    ...ctx,
+    char: ctx.listener,
+    user: ctx.speaker,
+  }
+
+  const resolved = await Promise.all(
+    tags.map(async (tag) => {
+      const path = tag.split(".")
+      const root = path[0]
+
+      if (keywords_replacers[root]) {
+        try {
+          const val = await keywords_replacers[root](path, msgs)
+          return [tag, val ?? ""]
+        } catch (e) {
+          console.log(e)
+          return [tag, ""]
+        }
+      }
+      const val = resolve_ctx_path(ctx_alias, path)
+      return [tag, val]
+    })
+  )
+
+  let result = text
+  for (const [tag, val] of resolved) {
+    result = result.replaceAll(`{{${tag}}}`, val)
+  }
+
+  return result
 }
 
 async function replace_all_content_variables (
   ctx: TextGenContext,
-  history: SentMessage[],
-  config_msgs: SentMessage[],
+  all_msgs: CoreMessage[],
 ) {
-  let remaining_loops = 100
-  // handle variables in the req.body.messages
-  for (let i = 0; i < history.length; i++) {
-    const m = history[i];
-    const [content, less_loops] = await replace_content_variables(
-      ctx, m.content, remaining_loops
+  for (let i = 0; i < all_msgs.length; i++) {
+    all_msgs[i].content = await replace_vars_from_text(
+      ctx, all_msgs, all_msgs[i].content
     )
-    remaining_loops = less_loops
-    history[i].content = content
   }
-  return history
+  return all_msgs
 }
 
-
-export async function gen_text (
+export async function gen_text_req (
   ctx: TextGenContext,
-  max_input_messages?: number
+  max_input_messages = 50
 ) {
-  if (!STATES.api_key) throw Error("API key is not configured.")
-  max_input_messages = STATES.chat["max_input_messages"] || 50
+  let raw_history = await get_recent_messages(TEMP.chat.id!, 0, max_input_messages)
   
-  let raw_history = (await get_recent_messages(TEMP.chat.id!, 0, max_input_messages))
-  .toReversed(); // Chronological order
-
-  const core_history: SentMessage[] = await Promise.all(
+  const core_history: CoreMessage[] = await Promise.all(
     raw_history.map(async h => {
       if (h.role === "user") {
         return {
@@ -451,7 +467,7 @@ export async function gen_text (
           content: h.content!
         }
       }
-      const gens: TextGen[] = await exec_sql("SELECT * FROM textgens WHERE msg_id = ?", [h.id])
+      const gens: TextGen[] = await exec_sql(`SELECT * FROM textgens where msg_id = ?`, [h.id])
       const picked = gens[h.picked]
       return {
         role: h.role,
@@ -460,29 +476,41 @@ export async function gen_text (
     })
   )
 
-  const default_llm_config = instantiate(LlmParams) as LlmParams
-  const chat_llm_config = TEMP.chat.llm_config_id ?
-    (await get_entry("llm_configs", TEMP.chat.llm_config_id))?.params || {}
+  const default_llm_params = instantiate(LlmParams) as LlmParams
+  const chat_llm_config: Partial<LlmConfig> = TEMP.chat.llm_config_id ?
+    (await get_entry("llm_configs", TEMP.chat.llm_config_id)) ?? {}
     : {}
-  const bubby_llm_config = ctx.listener.llm_config_id ?
-    (await get_entry("llm_configs", ctx.listener.llm_config_id))?.params || {}
+  const bubby_llm_config: Partial<LlmConfig> = ctx.listener.llm_config_id ?
+    (await get_entry("llm_configs", ctx.listener.llm_config_id)) ?? {}
     : {}
   
   // prepare the llm_config
-  const merged = structuredClone({
-    ...default_llm_config,
-    ...chat_llm_config,
-    ...bubby_llm_config,
+  const merged_config = structuredClone({
+    ...default_llm_params,
+    ...chat_llm_config.params ?? {},
+    ...bubby_llm_config.params ?? {},
   }) as LlmParams
-
-  merged.messages = await replace_all_content_variables(
-    ctx, core_history, merged.messages
+  
+  const api_key = chat_llm_config.api_key ?? bubby_llm_config.api_key
+  if (!api_key) {
+    throw Error("API key is not configured.")
+  }
+  
+  const api_url = chat_llm_config.api_url ?? 
+    bubby_llm_config.api_url ?? 
+    "https://openrouter.ai/api/v1/chat/completions"
+  
+  const all_msgs = await replace_all_content_variables(
+    ctx, [...merged_config.messages, ...core_history]
   );
 
   return {
-    api_key: STATES.api_key!,
-    api_url: "https://openrouter.ai/api/v1/chat/completions",
-    body: merged
+    api_key,
+    api_url,
+    body: {
+      ...merged_config,
+      messages: all_msgs
+    } as LlmParams
   }
 }
 
@@ -495,12 +523,13 @@ async function message_controller (bubby: Bubby, chat: Chat, message: Message, t
   message.content
   : textgens[message.picked]?.content ?? ""
 
-  const content_c = tags.content_c({
+  const content_c = t.content_c({
     innerText: picked_content
   })
-  const elem = tags.message_c(
-    tags.img({
+  const elem = t.message_c(
+    t.img({
       className: "profile",
+      src: await get_img_src(bubby.id + ".webp", "assets/profile_fallback.webp")
       // src: speaker?.profile_img || ""
     }),
     content_c
@@ -520,8 +549,8 @@ function safe_stringify (str: Record<string, any>) {
   try {
     return JSON.stringify(str)
   } catch (e) {
-    console.error(e)
-    return {}
+    console.log(e)
+    return ""
   }
 }
 
@@ -529,7 +558,7 @@ function safe_parse (str: string|any) {
   try {
     return JSON.parse(str)
   } catch (e) {
-    console.error(e)
+    console.log(e)
     return {}
   }
 }
@@ -546,8 +575,9 @@ export async function stream_and_show_text_gen(
   if (!response.ok) {
     console.log(response);
     ctrl.content_c.replaceChildren(
-      tags.error_c(`Error: ${await response.text()}`)
+      t.error_c(`Error: ${await response.text()}`)
     );
+    throw Error(`Error: ${await response.text()}`)
   }
 
   async function format_content (text: string) {
@@ -571,12 +601,11 @@ export async function stream_and_show_text_gen(
 
     buffer += await format_chunk(delta);
     ctrl.content_c.innerHTML = await format_content(buffer)
-    ctrl.elem.scrollIntoView({ behavior: "smooth" });
   });
   return buffer;
 }
 
-async function llm_message_gen (
+async function gen_message (
   speaker: Bubby,
   ctrl: MessageController
 ): Promise<TextGen|undefined> {
@@ -585,11 +614,11 @@ async function llm_message_gen (
   ctrl.content_c.classList.add("pending");
   ctrl.elem.scrollIntoView({ behavior: "smooth" });
 
-  const req = await gen_text({
+  const req = await gen_text_req({
     speaker: speaker,
     listener: ctrl.bubby,
     chat: TEMP.chat as Chat
-  })
+  }, TEMP.user_config.chat.max_input_messages ?? 50)
 
   let text: string
 
@@ -602,18 +631,16 @@ async function llm_message_gen (
   } finally {
     ctrl.content_c.classList.remove("pending");
   }
-
   
   // Save the generated text
-  const to_add: Message = {
+  const new_msg: Message = {
     ...ctrl.message,
     content: text,
     picked: 0,
   }
-  exec_sql
-  create_entry("messages", to_add)
+  await create_entry("messages", new_msg)
 
-  const g: TextGen = {
+  const llm_gen_entry: TextGen = {
     msg_id: ctrl.message.id,
     model: req.body.model,
     content: text,
@@ -621,7 +648,9 @@ async function llm_message_gen (
     cost: 0, // to be implemented later
     created_at: Temporal.Now.instant().epochMilliseconds
   }
-  return g
+  await create_entry("textgens", llm_gen_entry, false)
+
+  return llm_gen_entry
 }
 
 export async function send() {
@@ -636,7 +665,7 @@ export async function send() {
   const speaker_id = TEMP.chat.speaker_id;
 
   if (!listener_id) {
-    throw Error(`Listner is not specified`);
+    throw Error(`listener is not specified`);
   }
   if (!speaker_id) {
     throw Error(`Speaker is not specified`);
@@ -644,7 +673,7 @@ export async function send() {
 
   // Make user msg
   const prompt = prompt_c.innerText as string;
-  const user_msg: SentMessage = {
+  const user_msg: CoreMessage = {
     role: "user",
     content: prompt,
   };
@@ -671,20 +700,20 @@ export async function send() {
   }
   
   // Save new user msg
-  create_entry("messages", saved_user_msg)
+  await create_entry("messages", saved_user_msg)
 
   prompt_c.innerHTML = ""; // Clean the input elem
 
   
   const speaker = await get_entry("bubbies", speaker_id)
-  const listner = await get_entry("bubbies", listener_id)
+  const listener = await get_entry("bubbies", listener_id)
   const chat = TEMP.chat as Chat
 
   if (!speaker) throw Error(`Speaker is missing`) 
-  if (!listner) throw Error(`Lister is missing`)
+  if (!listener) throw Error(`Lister is missing`)
 
   const user_msg_ctrl = await message_controller(speaker, chat, saved_user_msg, [])
-  const llm_msg_ctrl = await message_controller(listner, chat, saved_llm_msg, [])
+  const llm_msg_ctrl = await message_controller(listener, chat, saved_llm_msg, [])
 
   // append user message elem & placeholder for char reply
   msg_list.append(user_msg_ctrl.elem);
@@ -692,11 +721,10 @@ export async function send() {
 
   // ACTUALLY GENERATE THE TEXT
   try {
-    const llm_generation = await llm_message_gen(speaker, llm_msg_ctrl) as TextGen
+    await gen_message(speaker, llm_msg_ctrl) as TextGen
     llm_msg_ctrl.elem.scrollIntoView({ behavior: "smooth" });
-    create_entry("textgens", llm_generation, false)
   } catch (e) {
-    console.error(e)
+    console.log(e)
   }
 }
 
@@ -711,16 +739,16 @@ export async function load_chat(chat: Chat) {
   TEMP.involved_bubby_ids = bubbies.map(c => c.id)
   /* SEND CONFIG UI < ADD PERSONA & TARGET CHAR OPTIONS */
 
-  const p = q("select.persona") as HTMLSelectElement;
-  const t = q("select.target_char") as HTMLSelectElement;
+  const ps = q("select.persona") as HTMLSelectElement;
+  const tg = q("select.target_char") as HTMLSelectElement;
 
-  p.replaceChildren(
-    p.firstElementChild!,
-    ...bubbies.map((char) => tags.option(char.id))
+  ps.replaceChildren(
+    ps.firstElementChild!,
+    ...bubbies.map((char) => t.option(char.id))
   );
-  t.replaceChildren(
-    t.firstElementChild!,
-    ...bubbies.map((char) => tags.option(char.id))
+  tg.replaceChildren(
+    tg.firstElementChild!,
+    ...bubbies.map((char) => t.option(char.id))
   );
 
   /* SHOW MESSAGES */
@@ -732,8 +760,19 @@ export async function load_chat(chat: Chat) {
     const message = history[i] as Message
     const speaker = await get_entry("bubbies", message.speaker_id)
     if (!speaker) {
-      console.error(`Speaker of ID ${message.speaker_id} does not exist!`)
-      return
+      console.log(`Speaker of ID ${message.speaker_id} does not exist!`)
+      const err = t.message_c(
+        { className: "error" },
+        t.img({
+          className: "profile",
+          src: "assets/profile_fallback.webp"
+        }),
+        t.content_c({
+          innerText: `<Speaker of ID ${message.speaker_id} does not exist!>`
+        })
+      )
+      c.push(err)
+      continue
     }
     const textgens = message.role === "assistant" ? 
     (await exec_sql(`SELECT * FROM textgens WHERE msg_id = ?`, message.id)) as TextGen[] 

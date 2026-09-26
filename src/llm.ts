@@ -25,6 +25,8 @@ export const GEN_TEXT = {
   async OpenRouter (
     template: GeneralRequestTemplate
   ): Promise<Response> {
+
+    console.log("TEXT GENERATION", template)
     
     return text_gen_common(async () => {
       
@@ -111,7 +113,7 @@ async function process_sse_line(
     const parsed = jju.parse(payload)
     await callback(parsed)
   } catch (e) {
-    console.error(e)
+    console.log(e)
   }
 
   return false
@@ -168,7 +170,7 @@ export async function stream_response_body(
         const obj = jju.parse(pure_data)
         await callback(obj)
       } catch (e) {
-        console.error(e)
+        console.log(e)
       }
     }
   }

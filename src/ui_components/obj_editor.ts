@@ -1,4 +1,4 @@
-import { FieldDef, TYPES } from "../definitions"
+import { FieldDef, instantiate, TYPES } from "../definitions"
 import t from "../tags"
 
 function run_fixer (def: Record<string, any>, raw_val: any): { ok: boolean, val?: any } {
@@ -263,9 +263,9 @@ export function val_c (
 
 export function arr_c (
   arr: any[], 
-  item_def: Record<string, any>, 
+  allow_def: Record<string, any>, 
 ) {
-  
+  debugger
   let dom: HTMLElement
   
   dom = t.arr_c() as HTMLElement
@@ -273,7 +273,7 @@ export function arr_c (
   const vals: HTMLElement[] = []
 
   function item_c (idx: number, new_: boolean = false) {
-    let val_node = val_c(idx, arr, item_def, true)
+    let val_node = val_c(idx, arr, allow_def, true)
     vals.push(val_node)
     let rm_btn = t.button({
       innerText: "x",
@@ -300,10 +300,9 @@ export function arr_c (
   const add_btn = t.button({
     innerText: "+",
     onclick () {
-      let def_type = item_def?.__type
-      let to_add = item_def?.default ?? TYPES[def_type as keyof typeof TYPES]?.field?.default
+      let to_add = instantiate(allow_def)
       arr.push(to_add)
-      add_btn.before(item_c(arr.length, true))
+      add_btn.before(item_c(arr.length -1, true))
       update()
     }
   })
@@ -329,12 +328,11 @@ export function obj_editor (
   def: Record<string, any> | undefined,
   obj: any[] | Record<string, any>,
   handlers: {
-    save?: (old_id: string) => string | Promise<string> 
+    save?: (old_id?: string) => string | Promise<string> 
   } = {},
   title?: string,
 ) {
-
-  const original_id = obj["id"]
+  const old_id = obj["id"]
 
   const handler_trigger_btns = Object.keys(handlers)
   .map(k => {
@@ -343,7 +341,7 @@ export function obj_editor (
     return t.button({
       innerText: k,
       async onclick () {
-        stat_c.innerText = await h(original_id)
+        stat_c.innerText = await h(old_id)
         setTimeout(() => {
           stat_c.innerText = ""
         }, 5000);
@@ -353,7 +351,7 @@ export function obj_editor (
 
   return t.obj_editor(
     title ? t.h2(title) : {},
-    Array.isArray(obj) ? arr_c(obj, def?.allows ?? "string") : obj_c(obj, def),
+    Array.isArray(obj) ? arr_c(obj, def?.allows) : obj_c(obj, def),
     ...handler_trigger_btns,
     stat_c
   )

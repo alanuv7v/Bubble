@@ -50,6 +50,9 @@ importers:
       marked:
         specifier: ^15.0.8
         version: 15.0.12
+      merge-anything:
+        specifier: ^6.0.6
+        version: 6.0.6
       moment:
         specifier: ^2.30.1
         version: 2.30.1
@@ -739,6 +742,10 @@ packages:
     resolution: {integrity: sha512-GI+WjezhPPcbM+tqE9LnmsY5qqjwHzTvjJ36wxYX5ujNXefSUJ/T17r5bqDV8yLhcgB59KTPNOc9O9cmHTPWsA==}
     engines: {node: '>=10'}
 
+  is-what@5.5.0:
+    resolution: {integrity: sha512-oG7cgbmg5kLYae2N5IVd3jm2s+vldjxJzK1pcu9LfpGuQ93MQSzo0okvRna+7y5ifrD+20FE8FvjusyGaz14fw==}
+    engines: {node: '>=18'}
+
   isexe@2.0.0:
     resolution: {integrity: sha512-RHxMLp9lnKHGHRng9QFhRCMbYAcVpn69smSGcq3f36xjgVVWThj4qqLbTLlq7Ssj8B+fIQ1EuCEGI2lKsyQeIw==}
 
@@ -870,6 +877,10 @@ packages:
     resolution: {integrity: sha512-8dD6FusOQSrpv9Z1rdNMdlSgQOIP880DHqnohobOmYLElGEqAL/JvxvuxZO16r4HtjTlfPRDC1hbvxC9dPN2nA==}
     engines: {node: '>= 18'}
     hasBin: true
+
+  merge-anything@6.0.6:
+    resolution: {integrity: sha512-F3K1W45PvTjRZzbcYIhXntNr8cux00gUxR8IzNPPG+80gNlAHZGVBwFyN4x5yjw/7QkLPKDbRQBK4KrJKo69mw==}
+    engines: {node: '>=18'}
 
   mimic-fn@2.1.0:
     resolution: {integrity: sha512-OqbOk5oEQeAZ8WXWydlu9HJjz9WVdEIvamMCcXmuqUYjTknH/sqsWvhQ3vgwKFRR1HpjvNBKQ37nbJgYzGqGcg==}
@@ -1894,6 +1905,8 @@ snapshots:
 
   is-url-superb@4.0.0: {}
 
+  is-what@5.5.0: {}
+
   isexe@2.0.0: {}
 
   jackspeak@3.4.3:
@@ -2003,6 +2016,10 @@ snapshots:
       '@jridgewell/sourcemap-codec': 1.6.0
 
   marked@15.0.12: {}
+
+  merge-anything@6.0.6:
+    dependencies:
+      is-what: 5.5.0
 
   mimic-fn@2.1.0: {}
 

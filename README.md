@@ -3,7 +3,7 @@
 LLM chat interface.
 Lightweight, locally stored user data.
 
-- Desktop: powered by NeutralinoJS.
+- Desktop: powered by Neutralinojs.
 - Browser: OPFS SQLite database.
 - LLM API access: based on OpenRouter.
 

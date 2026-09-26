@@ -1,11 +1,13 @@
-import STATES from "../src/STATES.ts";
-import TEMP from "../src/TEMP.ts";
+import TEMP from "./TEMP.ts";
+import yaml from "yaml";
 
-
-import t from "../src/tags.ts";
-import { create_entry, get_recent_chats, get_entry, load_chat, send, update_entry, get_bubbies, sync_chat_bubbies, get_chat_bubby_ids } from "../src/chat.ts";
-import { Bubby, Chat, instantiate, LlmConfig, LlmConfigSimple, LlmParams } from "../src/definitions.ts";
-import obj_editor from "../src/ui_components/obj_editor.ts";
+import t from "./tags.ts";
+import { create_entry, get_entry, load_chat, send, update_entry, sync_chat_bubbies, get_chat_bubby_ids, get_entries, get_recent_entries } from "./chat.ts";
+import { Bubby, Chat, instantiate, LlmConfig, LlmParams } from "./definitions.ts";
+import obj_editor from "./ui_components/obj_editor.ts";
+import { user_config_def } from "./user_config.ts";
+import { pipe } from "./utils/pipe.ts";
+import { get_img_src, pick_and_save_image } from "./assets.ts";
 
 
 const chat_list_c = t.chat_list()
@@ -40,9 +42,9 @@ const enter_chat = t.enter_chat(
             llm_config_id: null,
           })
           stat_c.innerHTML = "Created.";
-          render_chat_list(await get_recent_chats(0, 10))
+          render_chat_list(await get_recent_entries("chats", 0, 10))
         } catch (e) {
-          console.error(e)
+          console.log(e)
           stat_c.innerHTML = "The ID is already occupied!";
         }
       },
@@ -91,7 +93,7 @@ async function render_chat_list (chats: Chat[]) {
     return t.div(
       { 
         onclick () {
-          show_one_dom(in_chat_c)
+          show_one_dom("Chat")
           load_chat(chat)
         }
       },
@@ -124,37 +126,82 @@ const bubbies_c = t.bubbies_c(
         }
         await create_entry("bubbies", new_bubby)
         stat_c.innerHTML = "Created.";
-        render_bubby_list(await get_bubbies(0, 10))
+        render_bubby_list(await get_recent_entries("bubbies", 0, 10))
       } catch (e) {
-        console.error(e)
+        console.log(e)
         stat_c.innerHTML = (e as Error).toString();
       }
     },
   })
 )
 
-async function get_img (img_path: string) {
-  const file_name = img_path.split("/").at(-1)
-  if (!file_name) return ""
-  const root = await navigator.storage.getDirectory();
-  const img_dir = await root.getDirectoryHandle("imgs");
-  const file_handle = await img_dir.getFileHandle(file_name);
-  const file = await file_handle.getFile();
-  return URL.createObjectURL(file);
+const llm_config_list_c = t.list_c()
+async function refresh_llm_config_list () {
+  llm_config_list_c.replaceChildren(
+    ...(await get_recent_entries("llm_configs", 0, 10))
+    .map(c => t.div({
+      innerHTML: c.name, 
+      onclick: () => {
+        TEMP.edited_llm_config_id = c.id
+        show_one_dom("LLM Config")
+      }
+    }))
+  )
 }
+const llm_configs_c = t.llm_configs(
+  llm_config_list_c,
+  t.button({
+    innerText: "Prev",
+    onclick: async () => {
+      // WIP
+    }
+  }),
+  t.button({
+    innerText: "Next",
+    onclick: async () => {
+      // WIP
+    }
+  }),
+  t.button({
+    innerText: "Create LLM Config",
+    onclick: async () => {
+      let name = new_chat_input.innerText.trim();
+      try {
+        if (name === "") name = randname("LLM Config")
+        const new_conf: LlmConfig = {
+          id: name,
+          name,
+          api_key: "",
+          api_url: "https://openrouter.ai/api/v1/chat/completions",
+          params: instantiate(LlmParams)
+        }
+        await create_entry("llm_configs", new_conf)
+        stat_c.innerHTML = "Created.";
+        refresh_llm_config_list()
+      } catch (e) {
+        console.log(e)
+        stat_c.innerHTML = (e as Error).toString();
+      }
+    },
+  })
+)
 
-const bubby_config_c = t.bubby_config()
+async function render_bubby_list (bubbies: Bubby[]) {
 
-async function render_bubby_list (all: Bubby[]) {
+  async function bubby_item (bubby: Bubby) {
+    
+    let profile_img_src = await get_img_src(bubby.id + ".webp", "assets/profile_fallback.webp")
 
-  function bubby_item (bubby: Bubby) {
-    const img_c = t.img() as HTMLImageElement
-    get_img(bubby.id).then(r => img_c.src = r)
+    const img_c = t.img({
+      className: "profile",
+      src: profile_img_src
+    }) as HTMLImageElement
+
     return t.div(
       {
         onclick () {
           render_bubby_config(bubby)
-          show_one_dom(bubby_config_c)
+          show_one_dom("Edit Bubby")
         }
       },
       img_c,
@@ -163,21 +210,39 @@ async function render_bubby_list (all: Bubby[]) {
   }
 
   bubbies_list_c.replaceChildren(
-    ...all.map(bubby_item)
+    ...(await Promise.all(bubbies.map(bubby_item)))
   )
 }
 
 async function render_bubby_config (bubby: Bubby) {
-  bubby_config_c.replaceChildren(obj_editor(Bubby, bubby, {
-    async save(old_id: string) {
-      try {
-        await update_entry("bubbies", old_id ?? bubby.id, bubby)
-        return "Updated."
-      } catch (e) {
-        return (e as Error).toString()
-      }
-    },
-  }))
+  
+  const img = t.img({
+    className: "profile",
+    src: await get_img_src(bubby.id, "assets/profile_fallback.webp"),
+  }) as HTMLImageElement
+
+  edit_bubby_c.replaceChildren(
+    t.div(
+      img,
+      t.button({
+        innerText: "Set profile image",
+        onclick: async () => {
+          await pick_and_save_image(bubby.id, "webp", 0.9)
+          img.src = await get_img_src(bubby.id + ".webp", "assets/profile_fallback.webp")
+        }
+      }),
+    ),
+    obj_editor(Bubby, bubby, {
+      async save(old_id) {
+        try {
+          await update_entry("bubbies", old_id ?? bubby.id, bubby)
+          return "Updated."
+        } catch (e) {
+          return (e as Error).toString()
+        }
+      },
+    })
+  )
 }
 
 const prompt_c = t.prompt_c({
@@ -276,42 +341,11 @@ const in_chat_c = t.in_chat(
   )
 ) as HTMLDivElement;
 
-const chat_config_c = t.chat_config_c() as HTMLDivElement
 
-const user_config_c = obj_editor(undefined, STATES) as HTMLDivElement
-/* t.chat_config(
-  val_c("api_key", STATES),
-  t.pair_c(
-    t.key_c("chat"),
-    t.obj_c(
-      t.val_c(STATES.chat.visual)
-    )
-  )
-) */
-
-const llm_config_c = () => {
-  let name = randname("LLM Config")
-  const base: LlmConfig = {
-    id: name,
-    name,
-    params: {
-      model: "",
-      messages: []
-    }
-  }
-  
-  return t.editor_c(
-    t.input({ 
-      type: "range", 
-      value: LlmConfigSimple.temperature.default, 
-      min: LlmParams.temperature.min, 
-      max: LlmParams.temperature.max 
-    }),
-  )
-}
-
-
-
+const edit_bubby_c = t.edit_bubby() as HTMLDivElement
+const edit_chat_c = t.edit_chat_c() as HTMLDivElement
+const user_config_c = t.user_config() as HTMLDivElement
+const llm_config_c = t.llm_config_c() as HTMLDivElement
 const controls_c = t.controls_c(
   t.button({
     innerText: "Fullscreen",
@@ -324,11 +358,35 @@ const controls_c = t.controls_c(
     },
   })
 )
+const guide_c = t.guide_c(
+/* 
+Welcome to Bubble.
+Configure your API key.
+OpenRouter
 
-function show_one_dom (dom: typeof nav[keyof typeof nav]) {
+Create your first bubby.
+Or talk to our sample bubbies.
+Iris Hepburn
+Olivia Bell
+Indigo Gomez
+
+Create your persona.
+Or go anonymous.
+
+Create your first chat.
+You can include your persona and 1+ bubbies.
+
+Now you can chat.
+You can always configurate specifics later.
+Enjoy!
+*/
+) as HTMLDivElement
+
+function show_one_dom (title: keyof typeof nav) {
   const doms = Object.values(nav)
   doms.forEach(d => d.style.visibility = "collapse")
-  dom.style.visibility = "visible"
+  nav[title].style.visibility = "visible"
+  if (refresh[title]) refresh[title]()
 }
 
 
@@ -336,26 +394,30 @@ const nav = {
   Enter: enter_chat,
   Chat: in_chat_c,
   Bubbies: bubbies_c,
-  // Libraries: chat_config_c,
+  "LLM Configs": llm_configs_c,
   // Prompts: chat_config_c,
-  Controls: controls_c,
-  "Bubby Config": bubby_config_c,
-  // "Library Config": chat_config_c,
+  "Edit Bubby": edit_bubby_c,
   // "Prompt Config": chat_config_c,
-  "Chat Config": chat_config_c,
+  "Edit Chat": edit_chat_c,
   "User Config": user_config_c,
+  "LLM Config": llm_config_c,
+  Controls: controls_c,
+  Guide: guide_c,
 }
 
 const refresh: Partial<Record<keyof typeof nav, Function>> = {
   Enter () {
-    get_recent_chats(0, 10)
+    get_recent_entries("chats", 0, 10)
     .then(render_chat_list)
   },
   Bubbies () {
-    get_bubbies(0, 10)
+    get_recent_entries("bubbies", 0, 10)
     .then(render_bubby_list)
   },
-  async "Chat Config" () {
+  "LLM Configs" () {
+    refresh_llm_config_list()
+  },
+  async "Edit Chat" () {
     
     TEMP.chat = (await get_entry("chats", TEMP.chat.id!))!
     TEMP.involved_bubby_ids = await get_chat_bubby_ids(TEMP.chat.id!)
@@ -380,38 +442,56 @@ const refresh: Partial<Record<keyof typeof nav, Function>> = {
         }
       }
     }, "Bubbies In The Chat")
-    chat_config_c.replaceChildren(editor, editor_2)
+    edit_chat_c.replaceChildren(editor, editor_2)
   },
-  async "Bubby Config" () {
+  async "Edit Bubby" () {
     if (!TEMP.edited_bubby_id) return
     const bubby = (await get_entry("bubbies", TEMP.edited_bubby_id))!
     render_bubby_config(bubby)
   },
   "User Config" () {
-    let e = obj_editor(undefined, STATES, {
-      async save (old_id) {
-        // await update_entry("chats", TEMP.chat.id!, obj as Chat)
+    const e = obj_editor(user_config_def, TEMP.user_config, {
+      async save() {
+        const writer = await TEMP.user_config_handle?.createWritable()
+        await writer?.write(yaml.stringify(TEMP.user_config))
         return "Updated."
-      }
-    })
-    chat_config_c.replaceChildren(...e.children)
+      },
+    }) as HTMLDivElement
+    user_config_c.replaceChildren(...e.children)
+  },
+  async "LLM Config" () {
+    if (!TEMP.edited_llm_config_id) return
+    const base = await get_entry("llm_configs", TEMP.edited_llm_config_id)
+    if (!base) return
+    const e = obj_editor(LlmConfig, base, {
+      async save(old_id) {
+        await update_entry("llm_configs", old_id ?? TEMP.edited_llm_config_id!, base)
+        return "Updated."
+      },
+    }) as HTMLDivElement
+    llm_config_c.replaceChildren(...e.children)
+    
+    // return t.editor_c(
+    //   t.input({ 
+    //     type: "range", 
+    //     value: LlmConfigSimple.temperature.default, 
+    //     min: LlmParams.temperature.min, 
+    //     max: LlmParams.temperature.max 
+    //   }),
+    // )
   }
 }
 
 export async function render() {
 
-  get_recent_chats(0, 10)
-  .then(render_chat_list)
-  
-  show_one_dom(enter_chat)
+  show_one_dom("Enter")
 
   return [
     t.stack_c(
-      ...Object.entries(nav).map(([title, dom]) => t.button({
+      ...Object.keys(nav).map((title) => t.button({
         innerText: title,
         async onclick () {
-          if (refresh[title]) await refresh[title]()
-          show_one_dom(dom)
+          show_one_dom(title as keyof typeof nav)
         }
       }))
     ),

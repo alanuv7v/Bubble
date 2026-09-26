@@ -1,5 +1,8 @@
 import { BindingSpec } from "@sqlite.org/sqlite-wasm"
 import TEMP from "./TEMP"
+import { pipe } from "./utils/pipe"
+import yaml from "yaml"
+import user_config from "./user_config"
 
 const create_tables_sql = `--sql
 PRAGMA foreign_keys = ON;
@@ -7,6 +10,8 @@ PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS llm_configs (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
+  api_key TEXT DEFAULT NULL,
+  api_url TEXT DEFAULT NULL,
   params TEXT NOT NULL DEFAULT '{}'
 );
 
@@ -31,8 +36,8 @@ CREATE TABLE IF NOT EXISTS chats (
   created_at INTEGER NOT NULL,
   last_use_at INTEGER DEFAULT NULL,
   llm_config_id TEXT DEFAULT NULL,
-  FOREIGN KEY(speaker_id) REFERENCES bubbies(id) ON DELETE SET NULL
-  FOREIGN KEY(listener_id) REFERENCES bubbies(id) ON DELETE SET NULL
+  FOREIGN KEY(speaker_id) REFERENCES bubbies(id) ON DELETE SET NULL,
+  FOREIGN KEY(listener_id) REFERENCES bubbies(id) ON DELETE SET NULL,
   FOREIGN KEY(llm_config_id) REFERENCES llm_configs(id) ON DELETE SET NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_chats_name ON chats(name);
@@ -73,6 +78,10 @@ CREATE TABLE IF NOT EXISTS memories (
   created_at INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS libraries (
+  id TEXT PRIMARY KEY
+);
+
 CREATE TABLE IF NOT EXISTS chat_bubbies (
   chat_id TEXT NOT NULL,
   bubby_id TEXT NOT NULL,
@@ -87,7 +96,8 @@ CREATE TABLE IF NOT EXISTS chat_libraries (
   chat_id TEXT NOT NULL,
   library_id TEXT NOT NULL,
   PRIMARY KEY (chat_id, library_id),
-  FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE
+  FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE,
+  FOREIGN KEY (library_id) REFERENCES libraries(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_chat_libraries ON chat_libraries(library_id);
 CREATE INDEX IF NOT EXISTS idx_library_chats ON chat_libraries(library_id, chat_id);
@@ -96,7 +106,8 @@ CREATE TABLE IF NOT EXISTS library_prompts (
   library_id TEXT NOT NULL,
   prompt_id TEXT NOT NULL,
   PRIMARY KEY (library_id, prompt_id),
-  FOREIGN KEY (prompt_id) REFERENCES s(id) ON DELETE CASCADE
+  FOREIGN KEY (library_id) REFERENCES libraries(id) ON DELETE CASCADE,
+  FOREIGN KEY (prompt_id) REFERENCES prompts(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_library_prompt ON library_prompts(prompt_id);
 CREATE INDEX IF NOT EXISTS idx_prompt_libraries ON library_prompts(prompt_id, library_id);
@@ -217,10 +228,25 @@ export async function init() {
   }
 
   TEMP.worker.onerror = (e) => {
-    console.error('Worker crash:', e.message)
+    console.log('Worker crash:', e.message)
   }
 
   await exec_sql(init_sql)
+
+  TEMP.opfs_root_handle = await navigator.storage.getDirectory()
+  TEMP.user_config_handle = await TEMP.opfs_root_handle.getFileHandle("user_config.yaml", { create: true })
+  TEMP.assets_dir_handle = await TEMP.opfs_root_handle.getDirectoryHandle("assets", { create: true })
+
+  const conf = await pipe(
+    await TEMP.user_config_handle.getFile(),
+    (f: File) => f.text(),
+    yaml.parse
+  ) as typeof user_config
+
+  TEMP.user_config = {
+    ...TEMP.user_config,
+    ...conf
+  }
 
   return
 }
@@ -246,13 +272,12 @@ export function exec_sql<T = any>(command_sql: string, bind: BindingSpec = [], r
 }
 
 export async function nuke_db() {
-  const opfs_root = await navigator.storage.getDirectory()
-  await opfs_root.removeEntry("bubble_db", { recursive: true })
+  await TEMP.opfs_root_handle!.removeEntry("bubble_db", { recursive: true })
   
   let res
   // check
   try {
-    res = await opfs_root.getDirectoryHandle("bubble_db")
+    res = await TEMP.opfs_root_handle!.getDirectoryHandle("bubble_db")
   }
   catch (e) {
     console.info("Nuked!", e, res)

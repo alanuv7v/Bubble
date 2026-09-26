@@ -31,13 +31,13 @@
     "noUncheckedIndexedAccess": false, // accessing index must always check for undefined
     "noUnusedLocals": false, // Report errors on unused local variables.
     "noUnusedParameters": false, // Report errors on unused parameters in functions
-
+    "allowUnusedLabels": true,
     "allowImportingTsExtensions": true,
     "noEmit": true
 
   },
-  "include": ["./**/*.ts", "../old/uni.ts", "../old/ws_fs.ts"],
   "exclude": [
-    "node_modules/**/*"
+    "node_modules/**/*",
+    "old"
   ]
 }
