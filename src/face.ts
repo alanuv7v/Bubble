@@ -343,9 +343,9 @@ const in_chat_c = t.in_chat(
 
 
 const edit_bubby_c = t.edit_bubby() as HTMLDivElement
-const edit_chat_c = t.edit_chat_c() as HTMLDivElement
+const edit_chat_c = t.edit_chat() as HTMLDivElement
 const user_config_c = t.user_config() as HTMLDivElement
-const llm_config_c = t.llm_config_c() as HTMLDivElement
+const llm_config_c = t.llm_config() as HTMLDivElement
 const controls_c = t.controls_c(
   t.button({
     innerText: "Fullscreen",
@@ -360,15 +360,39 @@ const controls_c = t.controls_c(
 )
 const guide_c = t.guide_c(
 /* 
-Welcome to Bubble.
-Configure your API key.
-OpenRouter
+t.div(`Welcome to Bubble.
+Configure your LLM API.`),
+t.div({
+contenteditable: true,
+innerText: `API key`}),
+t.div({
+contenteditable: true,
+innerText: `API URL`}),
 
-Create your first bubby.
-Or talk to our sample bubbies.
-Iris Hepburn
-Olivia Bell
-Indigo Gomez
+t.details(
+t.summary("What options do I have?"),
+t.div(`Currently, using OpenRouter is what this app is oriented for.
+Setting other specific API URL in your LLM config is possible.
+However, if the API of the provider significantly differs from OpenRouter's or OpenAI's, the app may not work as intended.`)
+),
+
+t.button({
+onclick: () => {
+create_entry("bubbies", {
+name: New Bubby,
+desc: "",
+first_message: null,
+=
+  llm_config_id TEXT DEFAULT NULL,
+  FOREIGN KEY(llm_config_id) REFERENCES llm_configs(id) ON DELETE SET NULL
+
+})
+TEMP.edited_bubby_id = ""
+show_one_dom("Edit Bubby")
+},
+innerText: "Create your first bubby."
+}),
+t.div(`Or talk to our sample bubbies.`)
 
 Create your persona.
 Or go anonymous.
@@ -379,10 +403,19 @@ You can include your persona and 1+ bubbies.
 Now you can chat.
 You can always configurate specifics later.
 Enjoy!
+
+[How is my data kept?]
+  In a desktop app:
+  Your data is kept in a SQLite DB file in your dedvice's filesystem.
+
+  In a browser:
+  Your data is kept in your OPFS(Origin Private File System), meaning your browser, ultimately your device.
+
+  While this very app stores all personal data in your device only, the LLM API provider you are using might retain usage data, depending on their policies and your settings. So be sure to check them.
 */
 ) as HTMLDivElement
 
-function show_one_dom (title: keyof typeof nav) {
+export function show_one_dom (title: keyof typeof nav) {
   const doms = Object.values(nav)
   doms.forEach(d => d.style.visibility = "collapse")
   nav[title].style.visibility = "visible"
@@ -483,10 +516,7 @@ const refresh: Partial<Record<keyof typeof nav, Function>> = {
 }
 
 export async function render() {
-
-  show_one_dom("Enter")
-
-  return [
+ return [
     t.stack_c(
       ...Object.keys(nav).map((title) => t.button({
         innerText: title,

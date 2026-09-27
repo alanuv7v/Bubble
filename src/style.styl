@@ -543,7 +543,8 @@ request-c {
     align-items: center;
     justify-content: space-between;
     prompt-c {
-      min-width: 0;
+      width: 100% !important
+      max-width: unset !important
       overflow-wrap: anywhere;
       flex-grow: 1;
       flex-shrink: 1;
@@ -718,12 +719,13 @@ pair-c:has(> obj-c) {
 *.error {
   --mild-border-color: var(--error)
   --border-color: var(--error)
+  color: var(--error)
 }
 
 val-c {
   display: block
   min-height: 2lh
-  padding: 0.5lh
+  //padding: 0.5lh
 }
 
 obj-editor {
@@ -731,7 +733,6 @@ obj-editor {
   flex-direction: column
   gap: 0.5lh
   max-width: 100%
-  align-items: end
 }
 
 
@@ -784,8 +785,7 @@ bubbies-list {
 }
 
 
-edit-bubby {
-  
+edit-chat, edit-bubby, llm-config {
   display: flex
   flex-direction: column
   align-items: center
@@ -794,6 +794,9 @@ edit-bubby {
   gap: 0.5lh
 
   overflow: auto
+}
+
+edit-bubby {
 
   > div {
     width: 20ch
@@ -819,8 +822,20 @@ img.profile {
 
 
 llm-configs {
+  overflow: auto
   > list-c > * {
     padding: 1lh
     background: var(--bg-color)
   }
+}
+
+edit-chat {
+  overflow: auto
+}
+llm-config {
+  overflow: auto
+}
+
+stat-c {
+  margin: 0.5lh
 }

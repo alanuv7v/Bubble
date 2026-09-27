@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS bubbies (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   desc TEXT NOT NULL DEFAULT '',
-  first_message TEXT NOT NULL DEFAULT '',
+  first_message TEXT DEFAULT NULL,
   --memory_ids TEXT NOT NULL DEFAULT '[]',
   --chat_ids TEXT NOT NULL DEFAULT '[]',
   llm_config_id TEXT DEFAULT NULL,
@@ -206,7 +206,6 @@ const create_triggers_sql = gen_schema_triggers(ref_rels, sync_rels)
  */
 
 
-
 // Nah I'm just using junction tables...
 export const init_sql = create_tables_sql // + create_triggers_sql
 
@@ -272,11 +271,11 @@ export function exec_sql<T = any>(command_sql: string, bind: BindingSpec = [], r
 }
 
 export async function nuke_db() {
-  await TEMP.opfs_root_handle!.removeEntry("bubble_db", { recursive: true })
-  
   let res
   // check
   try {
+    await TEMP.opfs_root_handle!.removeEntry("bubble_db", { recursive: true })
+    localStorage.setItem("v", "0")
     res = await TEMP.opfs_root_handle!.getDirectoryHandle("bubble_db")
   }
   catch (e) {

@@ -186,18 +186,7 @@ export const LlmParamsSimple = {
   },
   messages: {
     __type: "array",
-    default: [
-      { 
-        role: "system", 
-        content: (
-          "You are {{char.name}}. Roleplay as {{char.name}}.\n"
-          + "# About {{char.name}}\n"
-          + "{{char.desc}}"
-          + "# About {{user.name}}\n"
-          + "{{user.desc}}"
-        )
-      }
-    ] as CoreMessage[],
+    default: [] as CoreMessage[],
     allows: {
       role: {
         __type: "str_in",
@@ -348,16 +337,11 @@ export type LlmResponse = {
   content: string
 }
 
-export type ImportedCharacter = {
-  desc: string
-  first_message: string
-}
-
-export type Bubby = ImportedCharacter & {
+export type Bubby = {
   id: Id
   name: string
   desc: string
-  first_message: string
+  first_message: string | null
   /* 
   memory_ids: Id[] 
     챗이랑은 구분된다.

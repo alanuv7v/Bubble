@@ -168,7 +168,8 @@ export type NewEntry<T> = Omit<T, 'id'> & { id?: Id }
 export async function create_entry<K extends TableName>(
   table: K,
   data: NewEntry<TableEntryMap[K]>,
-  need_id: boolean = true
+  need_id: boolean = true,
+  behavior = "FAIL" as "FAIL" | "IGNORE" | "REPLACE" 
 ): Promise<TableEntryMap[K]> {
   const item = { 
     ...data
@@ -178,7 +179,7 @@ export async function create_entry<K extends TableName>(
   const columns = keys.join(',')
   const placeholders = keys.map(() => '?').join(',')
   const values = Object.values(stringify_entry(table, item))
-  await exec_sql(`INSERT INTO ${table} (${columns}) VALUES (${placeholders})`, values)
+  await exec_sql(`INSERT OR ${behavior} INTO ${table} (${columns}) VALUES (${placeholders})`, values)
   return item
 }
 
@@ -574,6 +575,7 @@ export async function stream_and_show_text_gen(
 ) {
   if (!response.ok) {
     console.log(response);
+    ctrl.elem.classList.add("error")
     ctrl.content_c.replaceChildren(
       t.error_c(`Error: ${await response.text()}`)
     );

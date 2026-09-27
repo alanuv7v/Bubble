@@ -22,7 +22,7 @@ export function val_c (
   obj: Record<string, any>, 
   def?: Record<string, any>, 
   is_listed: boolean = false
-): HTMLElement {
+): HTMLElement[] {
 
   let raw = obj[key]
   let type_name = def?.__type
@@ -31,42 +31,46 @@ export function val_c (
     return !is_listed ? key : Number(dom.getAttribute("_index"))
   }
 
+  const result: HTMLElement[] = []
+  let dom: HTMLElement = t.val_c()
+
   if (type_name && def) {
+    
+
     if (type_name === "number" || type_name === "int") {
       let is_int = type_name === "int"
       let fdef = { ...TYPES[type_name]?.field ?? {}, ...def }
-      let dom = t.input({
+      dom = t.input({
         type: "number",
         value: raw ?? fdef.default ?? 0,
         min: fdef.min,
         max: fdef.max,
         step: is_int ? 1 : 0.1,
         onblur: () => {
-          let fixed = run_fixer(def, dom.value)
+          let fixed = run_fixer(def, (dom as HTMLInputElement).value)
           if (!fixed.ok) {
             dom.classList.add("error")
             return
           }
-          dom.classList.remove("error")
-          dom.value = fixed.val
+          dom.classList.remove("error");
+          (dom as HTMLInputElement).value = fixed.val
           obj[key_(dom)] = fixed.val
         }
       }) as HTMLInputElement
-      return dom
     }
 
-    if (type_name === "boolean") {
-      let dom = t.input({
+    else if (type_name === "boolean") {
+      dom = t.input({
         type: "checkbox",
         checked: Boolean(raw ?? def?.default ?? false),
         onchange: () => {
-          obj[key_(dom)] = dom.checked
+          obj[key_(dom)] = (dom as HTMLInputElement).checked
         }
       }) as HTMLInputElement
-      return dom
+      dom
     }
 
-    if (type_name === "str_in") {
+    else if (type_name === "str_in") {
       if (!def || !def.among || def.among.length < 1) throw new Error("Missing 'among' in str_in def")
       let val = raw ?? def.default
       let idx = (def.among as string[]).findIndex(s => s === val)
@@ -74,21 +78,19 @@ export function val_c (
         val = def.among[0]
         idx = 0
       }
-      const option_doms = def.among.map(s => t.option(s))
+      const option_doms = def.among.map((s: string) => t.option(s))
       const select_dom = t.select({
         selectedIndex: idx,
         onblur: () => {
-          const selected = select_dom.selectedOptions[0]
-          obj[key_(dom)] = selected.value
+          obj[key_(dom)] = select_dom.selectedOptions[0].value
         }
       }, ...option_doms) as HTMLSelectElement
 
-      const dom = select_dom //tags.select_c(select_dom) as HTMLInputElement
-      return dom
+      dom = select_dom //tags.select_c(select_dom) as HTMLInputElement
     }
     
 
-    if (type_name === "str_in_dynamic") {
+    else if (type_name === "str_in_dynamic") {
       if (!def || !def.among) throw new Error("Missing 'among' in str_in_dynamic def")
 
       let all_allowed: string[] = []
@@ -150,15 +152,14 @@ export function val_c (
         }
       }, t.option("...loading...")) as HTMLSelectElement
 
-      const dom = t.val_c(
+      dom = t.val_c(
         input_dom, select_dom
       ) //tags.select_c(select_dom) as HTMLInputElement
-      return dom
     }
 
-    if (type_name === "datetime") {
+    else if (type_name === "datetime") {
       const here = Temporal.Now.timeZoneId()
-      const dom = t.input({ 
+      dom = t.input({ 
         type: "datetime-local",
         value: Temporal.Instant
           .fromEpochMilliseconds(raw)
@@ -166,16 +167,16 @@ export function val_c (
           .toPlainDateTime()
           .toString({ smallestUnit: "minute" }),
         onchange: () => {
-          const ms = Temporal.PlainDateTime.from(dom.value).toZonedDateTime(here).epochMilliseconds
+          const ms = Temporal.PlainDateTime.from(
+            (dom as HTMLInputElement).value
+          ).toZonedDateTime(here).epochMilliseconds
           obj[key_(dom)] = ms
         }
-       }) as HTMLInputElement
-      return dom
+       })
     }
 
-    if (type_name === "string") {
-      let is_nullable = def?.nullable ?? false
-      let dom = t.val_c({
+    else if (type_name === "string") {
+      dom = t.val_c({
         contentEditable: "true",
         innerText: raw ?? def?.default ?? "",
         onblur: () => {
@@ -189,32 +190,55 @@ export function val_c (
             dom.classList.add("error")
             return
           }
-          dom.classList.remove("error")
-          dom.value = fixed.val
+          dom.classList.remove("error");
+          (dom as HTMLInputElement).value = fixed.val
           obj[key_(dom)] = fixed.val
         }
-      }) as HTMLInputElement
-      return dom
+      })
     }
 
-    if (type_name === "array") {
+    else if (type_name === "array") {
       let allow = def?.allows ?? { __type: "string" }
-      return arr_c(obj[key] ?? [], allow)
+      dom = arr_c(obj[key] ?? [], allow)
     }
 
-    if (type_name === "object") {
+    else if (type_name === "object") {
       if (!obj[key]) obj[key] = def?.default ? { ...def?.default } : {}
-      return obj_c(obj[key], def?.def)
+      dom = obj_c(obj[key], def?.def)
     }
+    
+    let is_nullable = def?.nullable ?? false
+    
+    if (is_nullable) {
+      const c = t.input({
+        type: "checkbox", 
+        onchange: () => {
+          if (c.value) {
+            dom["disabled"] = true
+            dom.style.pointerEvents = "none"
+            obj[key_(dom)] = null
+            return
+          }
+          dom["disabled"] = false
+          dom.style.pointerEvents = "auto"
+        }
+      }) as HTMLInputElement
+      result.push(c)
+    }
+
+    result.push(dom)
+
+    return result
+
   }
 
   if (Array.isArray(raw)) {
-    return arr_c(raw, { __type: "string" })
+    return [arr_c(raw, { __type: "string" })]
   }
 
   let val_type = typeof raw
   if (val_type === "object" && raw !== null) {
-    return obj_c(raw)
+    return [obj_c(raw)]
   }
 
   if (val_type === "number") {
@@ -232,7 +256,7 @@ export function val_c (
         obj[key_(dom)] = n
       }
     }) as HTMLInputElement
-    return dom
+    return [dom]
   }
 
   if (val_type === "boolean") {
@@ -243,7 +267,7 @@ export function val_c (
         obj[key_(dom)] = dom.checked
       }
     }) as HTMLInputElement
-    return dom
+    return [dom]
   }
 
   if (val_type === "string") {
@@ -255,17 +279,16 @@ export function val_c (
         obj[key_(dom)] = dom.innerText.trim()
       }
     }) as HTMLInputElement
-    return dom
+    return [dom]
   }
 
-  return t.val_c({ innerText: "?" })
+  return [t.val_c({ innerText: "?" })]
 }
 
 export function arr_c (
   arr: any[], 
   allow_def: Record<string, any>, 
 ) {
-  debugger
   let dom: HTMLElement
   
   dom = t.arr_c() as HTMLElement
@@ -274,7 +297,7 @@ export function arr_c (
 
   function item_c (idx: number, new_: boolean = false) {
     let val_node = val_c(idx, arr, allow_def, true)
-    vals.push(val_node)
+    vals.push(...val_node)
     let rm_btn = t.button({
       innerText: "x",
       onclick () {
@@ -285,7 +308,7 @@ export function arr_c (
       }
     })
     let res = t.item_c(val_node, rm_btn)
-    if (new_) val_node.focus()
+    if (new_) val_node[0].focus()
     return res
   }
 
@@ -317,7 +340,7 @@ export function obj_c (obj: Record<string, any>, def?: Record<string, any>) {
   return t.obj_c(
     ...Object.keys(obj).map(key => {
       let field_def = def && typeof def === "object" ? (def as any)[key] : undefined
-      return t.pair_c(t.key_c(key), val_c(key, obj, field_def))
+      return t.pair_c(t.key_c(key), ...val_c(key, obj, field_def))
     })
   ) as HTMLDivElement
 }
