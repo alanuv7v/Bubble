@@ -431,7 +431,9 @@ export function obj_editor (
     return t.button({
       innerText: k,
       async onclick () {
+        stat_c.classList.add("pending")
         stat_c.innerText = await h(old_id)
+        stat_c.classList.remove("pending")
         setTimeout(() => {
           stat_c.innerText = ""
         }, 5000);

@@ -530,22 +530,36 @@ export async function gen_text_req (
   const raw_history = before_message
     ? await get_messages_before_message(before_message, max_input_messages)
     : await get_recent_messages(TEMP.chat.id!, 0, max_input_messages)
+
+  const label_speakers = (await get_chat_bubby_ids(ctx.chat.id)).length > 2
+  const speakers = label_speakers
+    ? await get_entries("bubbies", [...new Set(raw_history.map((message) => message.speaker_id))])
+    : []
+  const speaker_names = new Map<Id, string>(
+    speakers.map((speaker): [Id, string] => [speaker.id, speaker.name])
+  )
   
   const core_history: CoreMessage[] = (await Promise.all(
     raw_history.map(async h => {
+      let content: string
       if (h.role === "user") {
-        return {
-          role: h.role,
-          content: h.content!
-        }
+        content = h.content ?? ""
+      } else {
+        const gens: TextGen[] = await exec_sql(
+          `SELECT * FROM textgens WHERE msg_id = ? ORDER BY created_at, rowid`, [h.id]
+        )
+        const picked = gens[h.picked]
+        content = picked?.content ?? h.content ?? ""
       }
-      const gens: TextGen[] = await exec_sql(
-        `SELECT * FROM textgens WHERE msg_id = ? ORDER BY created_at, rowid`, [h.id]
-      )
-      const picked = gens[h.picked]
+
+      if (label_speakers) {
+        const speaker_name = (speaker_names.get(h.speaker_id) ?? h.speaker_id)
+          .replace(/[\r\n\[\]]/g, " ")
+        content = `[${speaker_name}]: ${content}`
+      }
       return {
         role: h.role,
-        content: picked?.content ?? h.content ?? ""
+        content
       }
     })
   ))
@@ -564,7 +578,12 @@ export async function gen_text_req (
     ...chat_llm_config.params ?? {},
     ...bubby_llm_config.params ?? {},
   }) as LlmParams
-  
+
+  // remove null, blank out optional params
+  for (let key in merged_config) {
+    if (merged_config[key] === undefined) delete merged_config[key]
+  }
+
   const api_key = chat_llm_config.api_key ?? bubby_llm_config.api_key
   if (!api_key) {
     throw Error("API key is not configured.")
@@ -623,6 +642,10 @@ async function message_controller (bubby: Bubby, chat: Chat, message: Message, t
       className: "profile",
       src: await get_img_src(bubby.id + ".webp", "assets/profile_fallback.webp")
       // src: speaker?.profile_img || ""
+    }),
+    t.h3({
+      className: "name",
+      innerText: bubby.name
     }),
     content_c
   )

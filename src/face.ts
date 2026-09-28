@@ -278,7 +278,7 @@ async function render_bubby_config (bubby: Bubby) {
   
   const img = t.img({
     className: "profile",
-    src: await get_img_src(bubby.id, "assets/profile_fallback.webp"),
+    src: await get_img_src(bubby.id + ".webp", "assets/profile_fallback.webp"),
   }) as HTMLImageElement
 
   edit_bubby_c.replaceChildren(

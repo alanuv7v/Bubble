@@ -65,12 +65,12 @@ main {
     flex-grow: 1;
     overflow: hidden;
     position: relative
+    display: flex
+    align-items: center
+    justify-content: center
     > * {
-      position: absolute;
-      top: 0
-      left: 0
-      width: 100%;
-      height: 100%;
+      max-height: 100%;
+      overflow: auto
     }
   }
 }
@@ -410,8 +410,6 @@ input[type="checkbox"]:disabled {
 
 h1, h2, h3, h4, h5 {
   margin: unset;
-  padding-top: 0.33em;
-  padding-bottom: 0.33em;
   display: inline-block;
   width: fit-content;
   height: fit-content;
@@ -495,6 +493,9 @@ in-chat {
   flex-direction: column;
   flex-grow: 1;
   visibility: collapse;
+
+  height: 100%
+  width: 100%
 
   > * {
     max-width: 100%
@@ -606,15 +607,28 @@ message-c {
   /* background-color: var(--bg-color); */
   /* backdrop-filter: blur(5px); */
 
-  display: flex;
-  flex-direction: column;
+  display: block;
+
   width: 100%;
   max-width: 1200px;
   padding: 1lh;
 
   gap: 0.5lh;
 
+  > img.profile {
+    margin-right: 1lh
+    margin-bottom: 1lh
+    float: left
+  }
+  > h3.name {
+    display: block
+    padding-bottom: 0.5lh
+  }
+
   > utils-c {
+    width: 100%;
+    margin-top: 0.5lh;
+    justify-content: flex-end;
     opacity: 0%;
     transition: opacity 0.2s
     gap: 0.5lh;
@@ -828,12 +842,17 @@ bubbies-list {
 edit-chat, edit-bubby, llm-config {
   display: flex
   flex-direction: column
-  align-items: center
+  align-items: stretch
 
   padding: 0.5lh
   gap: 0.5lh
 
   overflow: auto
+}
+
+edit-chat {
+  min-width: 80ch
+  width: fit-content !important
 }
 
 edit-bubby {

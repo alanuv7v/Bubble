@@ -276,7 +276,8 @@ export const LlmParams = {
     __type: "int",
     default: 0,
     min: 0,
-    max: Infinity
+    max: Infinity,
+    nullable: true,
   },
   max_completion_tokens: {
     __type: "int",
