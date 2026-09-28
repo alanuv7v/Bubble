@@ -174,9 +174,6 @@ button {
   overflow: hidden;
   cursor pointer
 }
-label:hover >* {
-  box-shadow: inset 0px 0px 0px 2px var(--border-color);
-}
 
 select {
   font-family: inherit;
@@ -186,6 +183,30 @@ select {
 utils-c {
   display: flex;
   gap: 0.25lh;
+}
+
+message-c > .generation-controls {
+  opacity: 100%;
+  align-items: center;
+  align-self: flex-end;
+  gap: 0.4em;
+
+  button {
+    min-width: 2em;
+    padding: 0 0.4em;
+  }
+
+  .generation-index {
+    min-width: 3.5em;
+    text-align: center;
+    font-size: 0.85em;
+    opacity: 0.75;
+  }
+}
+
+message-c > .generation-controls button:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 
@@ -738,6 +759,24 @@ val-c {
   display: block
   min-height: 2lh
   //padding: 0.5lh
+}
+
+.nullable-toggle {
+  display: inline-flex
+  align-items: center
+  gap: 0.35em
+  margin-right: 0.5em
+  font-size: 0.85em
+}
+
+.obj-editor-control.disabled {
+  opacity: 0.45
+  pointer-events: none
+}
+
+.set-notice:not(:empty) {
+  color: var(--error)
+  font-size: 0.85em
 }
 
 obj-editor {

@@ -128,6 +128,21 @@ export async function get_messages_before(
   return res.toReversed()
 }
 
+async function get_messages_before_message(message: Message, limit = 50) {
+  const res = await exec_sql(
+    `SELECT * FROM messages
+      WHERE chat_id = ? AND (
+        created_at < (SELECT created_at FROM messages WHERE id = ?)
+        OR (created_at = (SELECT created_at FROM messages WHERE id = ?)
+          AND rowid < (SELECT rowid FROM messages WHERE id = ?))
+      )
+      ORDER BY created_at DESC, rowid DESC
+      LIMIT ?`,
+    [message.chat_id, message.id, message.id, message.id, limit]
+  ) as unknown as Message[]
+  return res.toReversed()
+}
+
 export async function get_entry<K extends TableName>(table: K, id: Id) {
   if (!id) return null
   const rows = await query(
@@ -460,9 +475,12 @@ async function replace_all_content_variables (
 
 export async function gen_text_req (
   ctx: TextGenContext,
-  max_input_messages = 50
+  max_input_messages = 50,
+  before_message?: Message
 ) {
-  let raw_history = await get_recent_messages(TEMP.chat.id!, 0, max_input_messages)
+  const raw_history = before_message
+    ? await get_messages_before_message(before_message, max_input_messages)
+    : await get_recent_messages(TEMP.chat.id!, 0, max_input_messages)
   
   const core_history: CoreMessage[] = (await Promise.all(
     raw_history.map(async h => {
@@ -472,7 +490,9 @@ export async function gen_text_req (
           content: h.content!
         }
       }
-      const gens: TextGen[] = await exec_sql(`SELECT * FROM textgens where msg_id = ?`, [h.id])
+      const gens: TextGen[] = await exec_sql(
+        `SELECT * FROM textgens WHERE msg_id = ? ORDER BY created_at, rowid`, [h.id]
+      )
       const picked = gens[h.picked]
       return {
         role: h.role,
@@ -542,16 +562,74 @@ async function message_controller (bubby: Bubby, chat: Chat, message: Message, t
     content_c
   )
 
+  const generation_label = t.span({ className: "generation-index" })
+  const previous_button = t.button({
+    type: "button",
+    className: "previous-generation",
+    innerText: "‹",
+    title: "Previous generation"
+  })
+  const next_button = t.button({
+    type: "button",
+    className: "next-generation",
+    innerText: "›",
+    title: "Next generation"
+  })
+  previous_button.setAttribute("aria-label", "Previous generation")
+  next_button.setAttribute("aria-label", "Next generation")
+  const generations_c = t.utils_c(
+    { className: "generation-controls" },
+    previous_button,
+    generation_label,
+    next_button
+  )
+  if (message.role === "assistant") elem.append(generations_c)
+
   const controller = {
     bubby,
     chat,
     message,
     textgens,
     elem,
-    content_c
+    content_c,
+    generation_label,
+    previous_button,
+    next_button
   }
   message_controllers.set(message.id, controller)
+  refresh_generation_controls(controller)
+  previous_button.addEventListener("click", () => void select_generation(controller, -1))
+  next_button.addEventListener("click", () => void select_generation(controller, 1))
   return controller
+}
+
+function refresh_generation_controls(ctrl: MessageController) {
+  const count = ctrl.textgens.length
+  const picked = Math.max(0, Math.min(ctrl.message.picked, Math.max(0, count - 1)))
+  ctrl.message.picked = picked
+  ctrl.generation_label.innerText = count ? `${picked + 1} / ${count}` : "1 / 1"
+  ctrl.previous_button.disabled = generation_active || picked <= 0
+  ctrl.next_button.disabled = generation_active
+}
+
+async function select_generation(ctrl: MessageController, direction: -1 | 1) {
+  if (generation_active) return
+  const next_index = ctrl.message.picked + direction
+  if (next_index < 0) return
+
+  if (next_index < ctrl.textgens.length) {
+    ctrl.message.picked = next_index
+    await update_entry("messages", ctrl.message.id, { picked: next_index })
+    const content = ctrl.textgens[next_index].content
+    ctrl.message.content = content
+    ctrl.content_c.innerHTML = await format_displayed_msg(content)
+    refresh_generation_controls(ctrl)
+    return
+  }
+
+  const speaker = await get_entry("bubbies", ctrl.message.listener_id)
+  if (!speaker) return
+  await gen_message(speaker, ctrl, false, true)
 }
 
 function safe_stringify (str: Record<string, any>) {
@@ -580,7 +658,8 @@ export async function stream_and_show_text_gen(
   stream: boolean,
   response: Response,
   ctrl: MessageController,
-  initial_text = ""
+  initial_text = "",
+  persist_message = true
 ) {
   if (!response.ok) {
     const error_text = await response.text()
@@ -601,9 +680,9 @@ export async function stream_and_show_text_gen(
 
   if (!stream) {
     const text = initial_text + await llm.no_stream_parse(response);
-    ctrl.message.content = text
+    if (persist_message) ctrl.message.content = text
     ctrl.content_c.innerHTML = await format_content(text)
-    await update_entry("messages", ctrl.message.id, { content: text })
+    if (persist_message) await update_entry("messages", ctrl.message.id, { content: text })
     return text;
   }
 
@@ -615,26 +694,30 @@ export async function stream_and_show_text_gen(
 
     buffer += await format_chunk(delta);
     const full_text = initial_text + buffer
-    ctrl.message.content = full_text
+    if (persist_message) ctrl.message.content = full_text
     ctrl.content_c.innerHTML = await format_content(full_text)
-    if (Date.now() - last_saved_at >= 750) {
+    if (persist_message && Date.now() - last_saved_at >= 750) {
       last_saved_at = Date.now()
       await update_entry("messages", ctrl.message.id, { content: full_text })
     }
   });
   const full_text = initial_text + buffer
-  ctrl.message.content = full_text
-  await update_entry("messages", ctrl.message.id, { content: full_text })
+  if (persist_message) {
+    ctrl.message.content = full_text
+    await update_entry("messages", ctrl.message.id, { content: full_text })
+  }
   return full_text;
 }
 
 async function gen_message (
   speaker: Bubby,
   ctrl: MessageController,
-  resume = false
+  resume = false,
+  alternative = false
 ): Promise<TextGen|undefined> {
   if (generation_active) return
   generation_active = true
+  refresh_generation_controls(ctrl)
   TEMP.text_gen_aborter = new AbortController()
   const initial_text = resume ? ctrl.message.content ?? "" : ""
   ctrl.content_c.innerHTML = "";
@@ -650,18 +733,21 @@ async function gen_message (
       speaker: speaker,
       listener: ctrl.bubby,
       chat: TEMP.chat as Chat
-    }, TEMP.user_config.chat.max_input_messages ?? 50)
-    if (!resume) {
+    }, TEMP.user_config.chat.max_input_messages ?? 50,
+    alternative ? ctrl.message : undefined)
+    if (!resume && !alternative) {
       ctrl.message.content = ""
       await create_entry("messages", ctrl.message)
     }
     const res = await llm.GEN_TEXT.OpenRouter(req);
-    text = await stream_and_show_text_gen(Boolean(req.body.stream), res, ctrl, initial_text);
+    text = await stream_and_show_text_gen(
+      Boolean(req.body.stream), res, ctrl, initial_text, !alternative
+    );
   } catch (e) {
     const message = TEMP.text_gen_aborter.signal.aborted
       ? "Generation cancelled."
       : `Generation failed: ${(e as Error).message ?? String(e)}`
-    if (ctrl.message.content !== null) {
+    if (!alternative && ctrl.message.content !== null) {
       await update_entry("messages", ctrl.message.id, { content: ctrl.message.content })
     }
     ctrl.content_c.append(t.error_c({ innerText: message }))
@@ -670,9 +756,10 @@ async function gen_message (
   } finally {
     ctrl.content_c.classList.remove("pending");
     generation_active = false
+    refresh_generation_controls(ctrl)
   }
   
-  await update_entry("messages", ctrl.message.id, { content: text })
+  if (!alternative) await update_entry("messages", ctrl.message.id, { content: text })
 
   const llm_gen_entry: TextGen = {
     msg_id: ctrl.message.id,
@@ -683,6 +770,19 @@ async function gen_message (
     created_at: Temporal.Now.instant().epochMilliseconds
   }
   await create_entry("textgens", llm_gen_entry, false)
+
+  ctrl.textgens = await exec_sql(
+    "SELECT * FROM textgens WHERE msg_id = ? ORDER BY created_at, rowid",
+    [ctrl.message.id]
+  ) as TextGen[]
+  ctrl.message.picked = alternative ? ctrl.textgens.length - 1 : Math.max(0, ctrl.textgens.length - 1)
+  await update_entry("messages", ctrl.message.id, {
+    picked: ctrl.message.picked,
+    ...(!alternative ? { content: text } : {})
+  })
+  ctrl.message.content = text
+  ctrl.content_c.innerHTML = await format_displayed_msg(text)
+  refresh_generation_controls(ctrl)
 
   return llm_gen_entry
 }
@@ -761,6 +861,11 @@ export async function send() {
     created_at: Temporal.Now.instant().epochMilliseconds,
     picked: 0,
   }
+
+  const speaker = await get_entry("bubbies", speaker_id)
+  const listener = await get_entry("bubbies", listener_id)
+  if (!speaker) throw Error(`Speaker with ID ${speaker_id} does not exist`)
+  if (!listener) throw Error(`Listener with ID ${listener_id} does not exist`)
   
   // Save new user msg
   await create_entry("messages", saved_user_msg)
@@ -768,12 +873,7 @@ export async function send() {
   prompt_c.innerHTML = ""; // Clean the input elem
 
   
-  const speaker = await get_entry("bubbies", speaker_id)
-  const listener = await get_entry("bubbies", listener_id)
   const chat = TEMP.chat as Chat
-
-  if (!speaker) throw Error(`Speaker is missing`) 
-  if (!listener) throw Error(`Lister is missing`)
 
   const user_msg_ctrl = await message_controller(speaker, chat, saved_user_msg, [])
   const llm_msg_ctrl = await message_controller(listener, chat, saved_llm_msg, [])
@@ -813,11 +913,27 @@ export async function load_chat(chat: Chat) {
     tg.firstElementChild!,
     ...bubbies.map((char) => t.option(char.id))
   );
-  ps.value = chat.speaker_id ?? "Speaker"
-  tg.value = chat.listener_id ?? "Listener"
+  ps.value = chat.speaker_id ?? ""
+  tg.value = chat.listener_id ?? ""
 
   /* SHOW MESSAGES */
   const history = await get_recent_messages(chat.id, 0, 20)
+  const chat_speaker = chat.speaker_id ? await get_entry("bubbies", chat.speaker_id) : null
+  const chat_listener = chat.listener_id ? await get_entry("bubbies", chat.listener_id) : null
+
+  // Repair messages saved with the visible dropdown placeholder labels as IDs.
+  if (chat_speaker && chat_listener) {
+    for (const message of history) {
+      const has_placeholder_id = [message.speaker_id, message.listener_id]
+        .some((id) => id === "Speaker" || id === "Listener")
+      if (!has_placeholder_id) continue
+      const speaker_id = message.role === "user" ? chat.speaker_id! : chat.listener_id!
+      const listener_id = message.role === "user" ? chat.listener_id! : chat.speaker_id!
+      await update_entry("messages", message.id, { speaker_id, listener_id })
+      message.speaker_id = speaker_id
+      message.listener_id = listener_id
+    }
+  }
 
   const c: HTMLElement[] = []
 
@@ -840,7 +956,7 @@ export async function load_chat(chat: Chat) {
       continue
     }
     const textgens = message.role === "assistant" ? 
-    (await exec_sql(`SELECT * FROM textgens WHERE msg_id = ?`, message.id)) as TextGen[] 
+    (await exec_sql(`SELECT * FROM textgens WHERE msg_id = ? ORDER BY created_at, rowid`, [message.id])) as TextGen[] 
     : []
     const msg_c = await message_controller(speaker, chat, message, textgens)
     c.push(msg_c.elem)

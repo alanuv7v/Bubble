@@ -290,7 +290,7 @@ const in_chat_c = t.in_chat(
               TEMP.chat.speaker_id = target.value;
             },
           },
-          t.option({ innerText: "Speaker" })
+          t.option({ value: "", innerText: "Speaker" })
         )
       ),
       t.div(
@@ -304,7 +304,7 @@ const in_chat_c = t.in_chat(
               TEMP.chat.listener_id = target.value;
             },
           },
-          t.option({ innerText: "Listener" })
+          t.option({ value: "", innerText: "Listener" })
         )
       ),
       t.group_c({ className: "horizontal" },
@@ -351,12 +351,12 @@ const controls_c = t.controls_c(
 const guide_c = t.guide_c(
 t.div(`Welcome to Bubble.
 Configure your LLM API.`),
-t.div({
-contenteditable: true,
-innerText: `API key`}),
-t.div({
-contenteditable: true,
-innerText: `API URL`}),
+t.input({
+type: "text",
+value: `API key`}),
+t.input({
+type: "text",
+value: `API URL`}),
 
 t.details(
 t.summary("What options do I have?"),
@@ -461,7 +461,7 @@ const refresh: Partial<Record<keyof typeof nav, () => void | Promise<void>>> = {
         return save_action(() => update_entry("chats", old_id ?? TEMP.chat.id!, TEMP.chat))
       }
     }, "Chat")
-    let editor_2 = obj_editor({ allows: { __type: "string" } }, TEMP.involved_bubby_ids, {
+    let editor_2 = obj_editor({ __type: "set", allows: { __type: "string" } }, TEMP.involved_bubby_ids, {
       save (old_id) {
         return save_action(() => sync_chat_bubbies(old_id ?? TEMP.chat.id!, TEMP.involved_bubby_ids))
       }

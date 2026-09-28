@@ -41,7 +41,7 @@ export const TYPES = {
       nullable: false as boolean
     },
     fixer (self, v) {
-      number_fixer(self, v)
+      return number_fixer(self, v)
     }
   },
   int: {
@@ -101,6 +101,12 @@ export const TYPES = {
     field: { 
       default: [] as any[],
       allows: {} as Object
+    }
+  },
+  set: {
+    field: {
+      default: [] as any[],
+      allows: { __type: "string" } as Record<string, any>
     }
   },
   object: {
