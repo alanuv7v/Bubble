@@ -1,24 +1,8 @@
 import { GeneralRequestTemplate } from "./definitions.ts"
 import TEMP from "./TEMP.ts"
 import jju from "jju"
-import { pipe, pipeLog } from "./utils/pipe.ts"
+import { pipe } from "./utils/pipe.ts"
 
-
-async function text_gen_common (sender: Function) {
-
-  let done = false
-  setTimeout(() => {
-    if (!done) {
-      throw Error("Failed to recieve response in 30s")
-    }
-  }, 30*1000);
-
-  let res = await sender()
-  done = true
-
-  return res
-
-}
 
 export const GEN_TEXT = {
 
@@ -26,24 +10,16 @@ export const GEN_TEXT = {
     template: GeneralRequestTemplate
   ): Promise<Response> {
 
-    console.log("TEXT GENERATION", template)
-    
-    return text_gen_common(async () => {
-      
-      console.log("Waiting for the end of the AI response...");
-      const signal = TEMP.text_gen_aborter.signal;
-      
-      let res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${template.api_key}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(template.body),
-        signal
-      })
-    
-      return res
+    console.info("Text Generation", template)
+
+    return fetch(template.api_url || 'https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${template.api_key}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(template.body),
+      signal: TEMP.text_gen_aborter.signal
     })
   }
 }
@@ -56,7 +32,7 @@ export async function generate_json(
 
   req.body.stream = false
 
-  const content = await pipeLog(
+  const content = await pipe(
     req,
     GEN_TEXT.OpenRouter,
     no_stream_parse

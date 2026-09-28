@@ -634,13 +634,25 @@ message-c {
 
   content-c {
     line-height: 1.25lh;
-    quote {
-      color: var(--quote);
-    }
   }
-  
-
 }
+
+@css {
+  span.quote {
+    color: var(--quote);
+  }
+  span.quote.single { font-style: italic; }
+  span.quote.double { color: var(--accent, var(--quote)); }
+  span.quote.single.curly { font-style: italic; font-weight: 500; }
+  span.quote.double.curly { color: var(--accent-2, var(--quote)); }
+  span.quote.backtick {
+    font-family: monospace;
+    padding: 0 0.2em;
+    border-radius: 0.2em;
+    background: color-mix(in srgb, var(--quote) 16%, transparent);
+  }
+}
+
 .pending::after { 
   margin-left: 0.5ch;
   content: ".";

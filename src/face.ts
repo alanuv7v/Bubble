@@ -2,11 +2,10 @@ import TEMP from "./TEMP.ts";
 import yaml from "yaml";
 
 import t from "./tags.ts";
-import { create_entry, get_entry, load_chat, send, update_entry, sync_chat_bubbies, get_chat_bubby_ids, get_entries, get_recent_entries } from "./chat.ts";
+import { create_entry, get_entry, load_chat, send, resume_last_reply, update_entry, sync_chat_bubbies, get_chat_bubby_ids, get_recent_entries } from "./chat.ts";
 import { Bubby, Chat, instantiate, LlmConfig, LlmParams } from "./definitions.ts";
 import obj_editor from "./ui_components/obj_editor.ts";
 import { user_config_def } from "./user_config.ts";
-import { pipe } from "./utils/pipe.ts";
 import { get_img_src, pick_and_save_image } from "./assets.ts";
 
 
@@ -21,34 +20,64 @@ const stat_c = t.stat_c() as HTMLElement;
 
 const randname = (prefix: string = "") => prefix + " " + Temporal.Now.zonedDateTimeISO().toPlainDateTime().round("second").toLocaleString()
 
+async function create_named(
+  prefix: string,
+  create: (name: string) => Promise<unknown>,
+  refresh?: () => Promise<unknown> | unknown
+) {
+  const name = new_chat_input.innerText.trim() || randname(prefix)
+  try {
+    await create(name)
+    stat_c.innerText = "Created."
+    await refresh?.()
+  } catch (e) {
+    stat_c.innerText = (e as Error).message || String(e)
+  }
+}
+
+function create_button(
+  label: string,
+  prefix: string,
+  create: (name: string) => Promise<unknown>,
+  refresh?: () => Promise<unknown> | unknown
+) {
+  return t.button({
+    innerText: label,
+    onclick: () => create_named(prefix, create, refresh),
+  })
+}
+
+async function save_action(action: () => Promise<unknown>) {
+  try {
+    await action()
+    return "Updated."
+  } catch (e) {
+    return (e as Error).message || String(e)
+  }
+}
+
+async function replace_list<T>(
+  container: HTMLElement,
+  items: T[],
+  render_item: (item: T) => HTMLElement | Promise<HTMLElement>
+) {
+  container.replaceChildren(...await Promise.all(items.map(render_item)))
+}
+
 const enter_chat = t.enter_chat(
   chat_list_c,
   t.group_c(
     { className: "horizontal" },
     new_chat_input,
-    t.button({
-      innerText: "Create Chat",
-      onclick: async () => {
-        let name = new_chat_input.innerText.trim();
-        try {
-          if (name === "") name = randname("Chat")
-          await create_entry("chats", {
-            id: name,
-            name,
-            speaker_id: null,
-            listener_id: null,
-            created_at: Temporal.Now.instant().epochMilliseconds,
-            last_use_at: null,
-            llm_config_id: null,
-          })
-          stat_c.innerHTML = "Created.";
-          render_chat_list(await get_recent_entries("chats", 0, 10))
-        } catch (e) {
-          console.log(e)
-          stat_c.innerHTML = "The ID is already occupied!";
-        }
-      },
-    })
+    create_button("Create Chat", "Chat", async (name) => create_entry("chats", {
+      id: name,
+      name,
+      speaker_id: null,
+      listener_id: null,
+      created_at: Temporal.Now.instant().epochMilliseconds,
+      last_use_at: null,
+      llm_config_id: null,
+    }), async () => render_chat_list(await get_recent_entries("chats", 0, 10)))
   ),
   stat_c
 ) as HTMLDivElement;
@@ -88,7 +117,7 @@ function timestamp_to_info(timestamp: number) {
 }
 
 async function render_chat_list (chats: Chat[]) {
-  const inners = await Promise.all(chats.map(async chat => {
+  await replace_list(chat_list_c, chats, async (chat) => {
     const bubby_ids = await get_chat_bubby_ids(chat.id)
     return t.div(
       { 
@@ -102,51 +131,33 @@ async function render_chat_list (chats: Chat[]) {
       t.div({ innerText: `created: ${timestamp_to_info(chat.created_at).toLocaleString()}` }),
       t.div({ innerText: `last use: ${chat.last_use_at ? timestamp_to_info(chat.last_use_at).toLocaleString() : "never"}` })
     )
-  }))
-  chat_list_c.replaceChildren(
-    ...inners
-  )
+  })
 }
 
 const bubbies_list_c = t.bubbies_list()
 const bubbies_c = t.bubbies_c(
   bubbies_list_c,
-  t.button({
-    innerText: "Create Bubby",
-    onclick: async () => {
-      let name = new_chat_input.innerText.trim();
-      try {
-        if (name === "") name = randname("Bubby")
-        const new_bubby: Bubby = {
-          id: name,
-          name,
-          desc: "",
-          first_message: "",
-          llm_config_id: null
-        }
-        await create_entry("bubbies", new_bubby)
-        stat_c.innerHTML = "Created.";
-        render_bubby_list(await get_recent_entries("bubbies", 0, 10))
-      } catch (e) {
-        console.log(e)
-        stat_c.innerHTML = (e as Error).toString();
-      }
-    },
-  })
+  create_button("Create Bubby", "Bubby", async (name) => {
+    const bubby: Bubby = {
+      id: name,
+      name,
+      desc: "",
+      first_message: "",
+      llm_config_id: null,
+    }
+    return create_entry("bubbies", bubby)
+  }, async () => render_bubby_list(await get_recent_entries("bubbies", 0, 10)))
 )
 
 const llm_config_list_c = t.list_c()
 async function refresh_llm_config_list () {
-  llm_config_list_c.replaceChildren(
-    ...(await get_recent_entries("llm_configs", 0, 10))
-    .map(c => t.div({
-      innerHTML: c.name, 
+  await replace_list(llm_config_list_c, await get_recent_entries("llm_configs", 0, 10), c => t.div({
+      innerText: c.name,
       onclick: () => {
         TEMP.edited_llm_config_id = c.id
         show_one_dom("LLM Config")
       }
     }))
-  )
 }
 const llm_configs_c = t.llm_configs(
   llm_config_list_c,
@@ -162,34 +173,17 @@ const llm_configs_c = t.llm_configs(
       // WIP
     }
   }),
-  t.button({
-    innerText: "Create LLM Config",
-    onclick: async () => {
-      let name = new_chat_input.innerText.trim();
-      try {
-        if (name === "") name = randname("LLM Config")
-        const new_conf: LlmConfig = {
-          id: name,
-          name,
-          api_key: "",
-          api_url: "https://openrouter.ai/api/v1/chat/completions",
-          params: instantiate(LlmParams)
-        }
-        await create_entry("llm_configs", new_conf)
-        stat_c.innerHTML = "Created.";
-        refresh_llm_config_list()
-      } catch (e) {
-        console.log(e)
-        stat_c.innerHTML = (e as Error).toString();
-      }
-    },
-  })
+    create_button("Create LLM Config", "LLM Config", (name) => create_entry("llm_configs", {
+      id: name,
+      name,
+      api_key: "",
+      api_url: "https://openrouter.ai/api/v1/chat/completions",
+      params: instantiate(LlmParams),
+    }), refresh_llm_config_list)
 )
 
 async function render_bubby_list (bubbies: Bubby[]) {
-
-  async function bubby_item (bubby: Bubby) {
-    
+  await replace_list(bubbies_list_c, bubbies, async (bubby) => {
     let profile_img_src = await get_img_src(bubby.id + ".webp", "assets/profile_fallback.webp")
 
     const img_c = t.img({
@@ -207,11 +201,7 @@ async function render_bubby_list (bubbies: Bubby[]) {
       img_c,
       t.div(bubby.name)
     )
-  }
-
-  bubbies_list_c.replaceChildren(
-    ...(await Promise.all(bubbies.map(bubby_item)))
-  )
+  })
 }
 
 async function render_bubby_config (bubby: Bubby) {
@@ -234,12 +224,7 @@ async function render_bubby_config (bubby: Bubby) {
     ),
     obj_editor(Bubby, bubby, {
       async save(old_id) {
-        try {
-          await update_entry("bubbies", old_id ?? bubby.id, bubby)
-          return "Updated."
-        } catch (e) {
-          return (e as Error).toString()
-        }
+        return save_action(() => update_entry("bubbies", old_id ?? bubby.id, bubby))
       },
     })
   )
@@ -282,7 +267,14 @@ const in_chat_c = t.in_chat(
         t.button(
           {
             innerText: "Resume",
-            /* onclick: () => actions.text_gen_resume() */
+            onclick: async () => {
+              try {
+                const resumed = await resume_last_reply()
+                if (!resumed) stat_c.innerText = "No interrupted reply to resume."
+              } catch (e) {
+                stat_c.innerText = (e as Error).message || String(e)
+              }
+            },
           },
           t.img({ src: "./icons/resume.svg" })
         )
@@ -295,8 +287,7 @@ const in_chat_c = t.in_chat(
             className: "persona",
             onchange: (event: Event) => {
               const target = event.target as HTMLSelectElement;
-              TEMP.chat.speaker_id =
-                target.options[target.selectedIndex].text;
+              TEMP.chat.speaker_id = target.value;
             },
           },
           t.option({ innerText: "Speaker" })
@@ -310,8 +301,7 @@ const in_chat_c = t.in_chat(
             className: "target_char",
             onchange: (event: Event) => {
               const target = event.target as HTMLSelectElement;
-              TEMP.chat.listener_id =
-                target.options[target.selectedIndex].text;
+              TEMP.chat.listener_id = target.value;
             },
           },
           t.option({ innerText: "Listener" })
@@ -359,7 +349,6 @@ const controls_c = t.controls_c(
   })
 )
 const guide_c = t.guide_c(
-/* 
 t.div(`Welcome to Bubble.
 Configure your LLM API.`),
 t.div({
@@ -375,44 +364,56 @@ t.div(`Currently, using OpenRouter is what this app is oriented for.
 Setting other specific API URL in your LLM config is possible.
 However, if the API of the provider significantly differs from OpenRouter's or OpenAI's, the app may not work as intended.`)
 ),
+t.button({
+  innerText: "Create your first bubby.",
+  onclick: () => {
+    create_entry("bubbies", {
+      name: "New Bubby",
+      desc: "",
+      first_message: null,
+      llm_config_id: null
+    }).finally(() => {
+      TEMP.edited_bubby_id = "New Bubby"
+      show_one_dom("Edit Bubby")
+    })
+  },
+}),
+t.div(`Or talk to our sample bubbies.`),
 
 t.button({
-onclick: () => {
-create_entry("bubbies", {
-name: New Bubby,
-desc: "",
-first_message: null,
-=
-  llm_config_id TEXT DEFAULT NULL,
-  FOREIGN KEY(llm_config_id) REFERENCES llm_configs(id) ON DELETE SET NULL
-
-})
-TEMP.edited_bubby_id = ""
-show_one_dom("Edit Bubby")
-},
-innerText: "Create your first bubby."
+  innerText: "Create your persona.",
+  onclick: () => {
+    create_entry("bubbies", {
+      name: "New Bubby (Your Persona)",
+      desc: "",
+      first_message: null,
+      llm_config_id: null
+    }).finally(() => {
+      TEMP.edited_bubby_id = "New Bubby (Your Persona)"
+      show_one_dom("Edit Bubby")
+    })
+  },
 }),
-t.div(`Or talk to our sample bubbies.`)
+t.div(`Or go anonymous.`),
 
-Create your persona.
-Or go anonymous.
+t.button({
+  innerText: "Now you can chat.",
+  onclick: () => {
+    show_one_dom("Enter")
+  },
+}),
+t.div("You can always configure details later. Enjoy!"),
 
-Create your first chat.
-You can include your persona and 1+ bubbies.
+t.details(
+t.summary("How is my data kept?"),
+t.div(`In a desktop app:
+Your data is kept in a SQLite DB file in your dedvice's filesystem.
 
-Now you can chat.
-You can always configurate specifics later.
-Enjoy!
+In a browser:
+Your data is kept in your OPFS(Origin Private File System), meaning your browser, ultimately your device.
 
-[How is my data kept?]
-  In a desktop app:
-  Your data is kept in a SQLite DB file in your dedvice's filesystem.
-
-  In a browser:
-  Your data is kept in your OPFS(Origin Private File System), meaning your browser, ultimately your device.
-
-  While this very app stores all personal data in your device only, the LLM API provider you are using might retain usage data, depending on their policies and your settings. So be sure to check them.
-*/
+While this very app stores all personal data in your device only, the LLM API provider you are using might retain usage data, depending on their policies and your settings. So be sure to check them.`)
+),
 ) as HTMLDivElement
 
 export function show_one_dom (title: keyof typeof nav) {
@@ -438,7 +439,7 @@ const nav = {
   Guide: guide_c,
 }
 
-const refresh: Partial<Record<keyof typeof nav, Function>> = {
+const refresh: Partial<Record<keyof typeof nav, () => void | Promise<void>>> = {
   Enter () {
     get_recent_entries("chats", 0, 10)
     .then(render_chat_list)
@@ -456,23 +457,13 @@ const refresh: Partial<Record<keyof typeof nav, Function>> = {
     TEMP.involved_bubby_ids = await get_chat_bubby_ids(TEMP.chat.id!)
 
     let editor = obj_editor(Chat, TEMP.chat, {
-      async save (old_id) {
-        try {
-          await update_entry("chats", old_id ?? TEMP.chat.id!, TEMP.chat)
-          return "Updated."
-        } catch (e) {
-          return (e as Error).toString()
-        }
+      save (old_id) {
+        return save_action(() => update_entry("chats", old_id ?? TEMP.chat.id!, TEMP.chat))
       }
     }, "Chat")
     let editor_2 = obj_editor({ allows: { __type: "string" } }, TEMP.involved_bubby_ids, {
-      async save (old_id) {
-        try {
-          await sync_chat_bubbies(old_id ?? TEMP.chat.id!, TEMP.involved_bubby_ids)
-          return "Updated."
-        } catch (e) {
-          return (e as Error).toString()
-        }
+      save (old_id) {
+        return save_action(() => sync_chat_bubbies(old_id ?? TEMP.chat.id!, TEMP.involved_bubby_ids))
       }
     }, "Bubbies In The Chat")
     edit_chat_c.replaceChildren(editor, editor_2)
@@ -485,9 +476,11 @@ const refresh: Partial<Record<keyof typeof nav, Function>> = {
   "User Config" () {
     const e = obj_editor(user_config_def, TEMP.user_config, {
       async save() {
-        const writer = await TEMP.user_config_handle?.createWritable()
-        await writer?.write(yaml.stringify(TEMP.user_config))
-        return "Updated."
+        return save_action(async () => {
+          const writer = await TEMP.user_config_handle?.createWritable()
+          await writer?.write(yaml.stringify(TEMP.user_config))
+          await writer?.close()
+        })
       },
     }) as HTMLDivElement
     user_config_c.replaceChildren(...e.children)
@@ -498,8 +491,7 @@ const refresh: Partial<Record<keyof typeof nav, Function>> = {
     if (!base) return
     const e = obj_editor(LlmConfig, base, {
       async save(old_id) {
-        await update_entry("llm_configs", old_id ?? TEMP.edited_llm_config_id!, base)
-        return "Updated."
+        return save_action(() => update_entry("llm_configs", old_id ?? TEMP.edited_llm_config_id!, base))
       },
     }) as HTMLDivElement
     llm_config_c.replaceChildren(...e.children)

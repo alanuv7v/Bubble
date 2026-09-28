@@ -3,6 +3,7 @@ import TEMP from "./TEMP"
 import { pipe } from "./utils/pipe"
 import yaml from "yaml"
 import user_config from "./user_config"
+import { merge } from "merge-anything"
 
 const create_tables_sql = `--sql
 PRAGMA foreign_keys = ON;
@@ -220,14 +221,16 @@ export async function init() {
     const { id, res, err } = e.data
     const req = TEMP.db_pending!.get(id)
     if (!req) return
-    console.log("result:\n", res, err)
-
     TEMP.db_pending!.delete(id)
     err ? req.reject(new Error(err)) : req.resolve(res)
   }
 
   TEMP.worker.onerror = (e) => {
     console.log('Worker crash:', e.message)
+    for (const req of TEMP.db_pending!.values()) {
+      req.reject(new Error(e.message || 'Database worker crashed'))
+    }
+    TEMP.db_pending!.clear()
   }
 
   await exec_sql(init_sql)
@@ -242,10 +245,7 @@ export async function init() {
     yaml.parse
   ) as typeof user_config
 
-  TEMP.user_config = {
-    ...TEMP.user_config,
-    ...conf
-  }
+  TEMP.user_config = merge(user_config, conf ?? {}) as typeof user_config
 
   return
 }
@@ -256,9 +256,6 @@ export type AsEntry<T> = {
 }
 
 export function exec_sql<T = any>(command_sql: string, bind: BindingSpec = [], rowMode = "object", returnValue = "resultRows"): Promise<AsEntry<T>[]> {
-
-  console.log("command:\n", command_sql)
-  console.log("bindings:\n", bind)
 
   if (!TEMP.worker) init()
 

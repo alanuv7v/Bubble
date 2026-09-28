@@ -4,7 +4,7 @@ export default {
       render_message_as_markdown: true,
     },
     safety: {
-      sanitize_message: false,
+      sanitize_message: true,
     },
     max_input_messages: 50,
   }
@@ -13,7 +13,7 @@ export default {
 export const user_config_def = {
   chat: {
     max_input_messages: {
-      __types: "int"
+      __type: "int"
     },
   }
 }

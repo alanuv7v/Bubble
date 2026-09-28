@@ -2,6 +2,7 @@ import { marked } from "marked"
 import DOMPurify from "dompurify"
 import { pipeSync } from "./pipe.ts"
 import TEMP from "../TEMP.ts";
+import mark_quotes from "./mark_quotes.ts";
 
 /**
  * Splits text into an array of quotation and non-quotation parts.
@@ -40,11 +41,11 @@ function handle_quotes(text: string): string {
 export default function (content: string) {
   return pipeSync(
     content,
-    handle_quotes,
-    (s) => TEMP.user_config.chat.safety.sanitize_message ? DOMPurify.sanitize(s) : s,
+    mark_quotes,
     (s) => TEMP.user_config.chat.visual.render_message_as_markdown ? marked.parse(s.replaceAll("<br>", "\n")) : s,
     s => s.replaceAll("\n", "<br>"),
+    s => TEMP.user_config.chat.safety.sanitize_message ? DOMPurify.sanitize(s) : s,
   )
 }
 
-window["handle_quotes"] = handle_quotes
+window["handle_quotes"] = mark_quotes

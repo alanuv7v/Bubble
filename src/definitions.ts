@@ -381,7 +381,7 @@ export const Bubby = {
 export type Prompt = {
   id: Id,
   content: string,
-  trigger: string[],
+  trigger_words: string[],
 }
 
 export type History = Message[]

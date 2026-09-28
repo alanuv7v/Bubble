@@ -9,7 +9,7 @@ import * as db from "./database.ts";
 import { marked } from "marked";
 import PATH from "path-browserify";
 import * as llm from "./llm";
-import { create_entries, create_entry, delete_entry, get_entry, query, update_entry } from "./chat.ts";
+import { create_entries, create_entry, delete_entry, get_entry, query, update_entry, sync_chat_bubbies } from "./chat.ts";
 import { render, show_one_dom } from "./face.ts";
 import { nuke_db } from "./database.ts";
 import { instantiate, LlmParams } from "./definitions.ts";
@@ -93,7 +93,7 @@ try {
       }
     }, false, "IGNORE")
   
-    await create_entry("chats", {
+  await create_entry("chats", {
       id: "First Chat",
       name: "First Chat",
       speaker_id: "Ethan",
@@ -101,7 +101,9 @@ try {
       created_at: Temporal.Now.instant().epochMilliseconds,
       last_use_at: null,
       llm_config_id: "Roleplay"
-    }, false, "IGNORE")
+  }, false, "IGNORE")
+
+  await sync_chat_bubbies("First Chat", ["Ethan", "Angelica"])
   
     localStorage.setItem("v", "1")
   }
