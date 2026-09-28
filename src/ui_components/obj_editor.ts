@@ -190,13 +190,13 @@ function boolean_control (field: FieldContext): HTMLElement {
 function choice_control (field: FieldContext): HTMLElement {
   const choices = field.def?.among as string[] | undefined
   if (!choices?.length) throw new Error("Missing 'among' in str_in def")
-  const selected = choices.indexOf(field.raw ?? field.def?.default)
+  const requested = field.raw ?? field.def?.default ?? choices[0]
   const select = t.select({
-    selectedIndex: selected < 0 ? 0 : selected,
     onblur: () => {
       save_field_value(field, select, select.value)
     }
   }, ...choices.map((choice) => t.option(choice))) as HTMLSelectElement
+  select.value = choices.includes(requested) ? requested : choices[0]
   return select
 }
 

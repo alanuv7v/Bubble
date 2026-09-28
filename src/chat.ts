@@ -9,6 +9,7 @@ import { AsEntry, exec_sql } from "./database";
 import { merge } from "merge-anything"
 import obj_path from "./utils/obj_path";
 import { get_img_src } from "./assets";
+import confirm_btn from "./ui_components/confirm_btn";
 
 
 export type TableEntryMap = {
@@ -227,6 +228,25 @@ WHERE cb.chat_id = ?;`
   return (await exec_sql(sql, [chat_id])) as unknown as Bubby[]
 }
 
+export async function refresh_chat_bubby_selects(chat: Chat) {
+  const bubbies = await get_chat_bubbies(chat.id)
+  TEMP.involved_bubby_ids = bubbies.map((bubby) => bubby.id)
+
+  const speaker_select = q("select.persona") as HTMLSelectElement
+  const listener_select = q("select.target_char") as HTMLSelectElement
+  speaker_select.replaceChildren(
+    speaker_select.firstElementChild!,
+    ...bubbies.map((bubby) => t.option(bubby.id))
+  )
+  listener_select.replaceChildren(
+    listener_select.firstElementChild!,
+    ...bubbies.map((bubby) => t.option(bubby.id))
+  )
+  speaker_select.value = chat.speaker_id ?? ""
+  listener_select.value = chat.listener_id ?? ""
+  return TEMP.involved_bubby_ids
+}
+
 export async function get_bubby_chats(bubby_id: Id) {
   const sql = `SELECT c.*
 FROM chats c
@@ -235,11 +255,84 @@ WHERE cb.bubby_id = ?;`
   return (await exec_sql(sql, [bubby_id])) as unknown as Id[]
 }
 
-export const sync_chat_bubbies = async (
-  chat_id: string,
-  bubby_ids: string[]
-) => {
-  return await sync_junction_table("chat_bubbies", chat_id, bubby_ids)
+export type ChatCastState = {
+  speaker_id: Id | null
+  listener_id: Id | null
+  bubby_ids: Id[]
+}
+
+let chat_cast_write_queue: Promise<unknown> = Promise.resolve()
+
+export function update_chat_cast(
+  chat_id: Id,
+  speaker_id: Id | null | undefined,
+  listener_id: Id | null | undefined,
+  req_bubby_ids: Id[],
+  chat_patch?: Partial<Chat>
+): Promise<ChatCastState> {
+  const write = chat_cast_write_queue.then(async () => {
+    const chat = await get_entry("chats", chat_id)
+    if (!chat) throw new Error(`Chat ${chat_id} does not exist`)
+
+    const bubby_ids = [...new Set(req_bubby_ids.filter(Boolean))]
+    let next_speaker_id = speaker_id === undefined ? chat.speaker_id : speaker_id || null
+    let next_listener_id = listener_id === undefined ? chat.listener_id : listener_id || null
+
+    if (next_speaker_id && next_speaker_id === chat.speaker_id && !bubby_ids.includes(next_speaker_id)) {
+      next_speaker_id = null
+    } else if (next_speaker_id && !bubby_ids.includes(next_speaker_id)) {
+      bubby_ids.push(next_speaker_id)
+    }
+    if (next_listener_id && next_listener_id === chat.listener_id && !bubby_ids.includes(next_listener_id)) {
+      next_listener_id = null
+    } else if (next_listener_id && !bubby_ids.includes(next_listener_id)) {
+      bubby_ids.push(next_listener_id)
+    }
+
+    const normalized_bubby_ids = [...new Set(bubby_ids)]
+    await exec_sql("BEGIN TRANSACTION")
+    try {
+      if (normalized_bubby_ids.length) {
+        const placeholders = normalized_bubby_ids.map(() => "?").join(",")
+        await exec_sql(
+          `DELETE FROM chat_bubbies WHERE chat_id = ? AND bubby_id NOT IN (${placeholders})`,
+          [chat_id, ...normalized_bubby_ids]
+        )
+      } else {
+        await exec_sql("DELETE FROM chat_bubbies WHERE chat_id = ?", [chat_id])
+      }
+
+      for (const bubby_id of normalized_bubby_ids) {
+        await exec_sql(
+          "INSERT OR IGNORE INTO chat_bubbies (chat_id, bubby_id) VALUES (?, ?)",
+          [chat_id, bubby_id]
+        )
+      }
+      const chat_fields = { ...chat_patch }
+      delete chat_fields.id
+      await update_entry("chats", chat_id, {
+        ...chat_fields,
+        speaker_id: next_speaker_id,
+        listener_id: next_listener_id
+      })
+      await exec_sql("COMMIT")
+
+      return {
+        speaker_id: next_speaker_id,
+        listener_id: next_listener_id,
+        bubby_ids: normalized_bubby_ids
+      }
+    } catch (e) {
+      await exec_sql("ROLLBACK").catch(() => {})
+      throw e
+    }
+  })
+  chat_cast_write_queue = write.then(() => undefined, () => undefined)
+  return write
+}
+
+export async function sync_chat_bubbies(chat_id: Id, bubby_ids: Id[]) {
+  return update_chat_cast(chat_id, undefined, undefined, bubby_ids)
 }
 
 export const sync_chat_libraries = async (
@@ -296,45 +389,6 @@ export async function get_junction_entries<K extends JunctionTableName>(
   return (await exec_sql(sql, ids))
 }
 
-/* 
-Using json_whatever funcs in SQLite instead
-
-
-type EntryUpdateHandlers = {
-  [K in TableName]?: (TableEntryMap[K])[]
-}
-const sync_add = async (
-  obj: Entry, 
-  added_id: string, 
-  target_table: TableName, 
-  target_prop: string
-) => {
-  const target = await get_entry(target_table, added_id)
-  if (!target) return
-  return await update_entry(
-    target_table, added_id, { [target_prop]: [...target[target_prop], obj.id] }
-  )
-}
-
-const sync_rm = async (
-  obj: Entry, 
-  added_id: string, 
-  target_table: TableName, 
-  target_prop: string
-) => {
-  const target = await get_entry(target_table, added_id)
-  if (!target) return
-  const og_target_prop = target[target_prop] as string[]
-  const idx = og_target_prop.findIndex(s => s === obj.id)
-  if (idx < 0) {
-    // obj.id did not exist in target prop
-    return false
-  }
-  return await update_entry(
-    target_table, added_id, { [target_prop]: og_target_prop.toSpliced(idx, 1) }
-  )
-} */
-
 export async function update_entry<K extends TableName>(
   table: K,
   id: Id,
@@ -352,11 +406,6 @@ export async function update_entry<K extends TableName>(
 export function text_gen_abort() {
   TEMP.text_gen_aborter.abort();
 }
-
-
-
-
-
 
 
 
@@ -543,6 +592,22 @@ export async function gen_text_req (
 type MessageController = Awaited<ReturnType<typeof message_controller>>
 const message_controllers = new Map<Id, MessageController>()
 let generation_active = false
+let generating_message_id: Id | null = null
+
+async function delete_message(ctrl: MessageController) {
+  if (ctrl.delete_btn.disabled || (generation_active && generating_message_id === ctrl.message.id)) return
+
+  ctrl.delete_btn.disabled = true
+  try {
+    await delete_entry("messages", ctrl.message.id)
+    ctrl.elem.remove()
+    message_controllers.delete(ctrl.message.id)
+  } catch (e) {
+    ctrl.delete_btn.disabled = false
+    ctrl.elem.classList.add("error")
+    ctrl.content_c.append(t.error_c({ innerText: `Delete failed: ${(e as Error).message ?? String(e)}` }))
+  }
+}
 
 async function message_controller (bubby: Bubby, chat: Chat, message: Message, textgens: TextGen[]) {
 
@@ -562,28 +627,35 @@ async function message_controller (bubby: Bubby, chat: Chat, message: Message, t
     content_c
   )
 
-  const generation_label = t.span({ className: "generation-index" })
+  const delete_button = confirm_btn("X", () => void delete_message(controller))
+  Object.assign(delete_button, {
+    className: "delete-message",
+    title: "Delete message"
+  })
+  delete_button.setAttribute("aria-label", "Delete message")
+  const generation_label = t.span({ className: "generation-index" }) as HTMLButtonElement
   const previous_button = t.button({
     type: "button",
     className: "previous-generation",
-    innerText: "‹",
+    innerText: "<",
     title: "Previous generation"
-  })
+  }) as HTMLButtonElement
   const next_button = t.button({
     type: "button",
     className: "next-generation",
-    innerText: "›",
+    innerText: ">",
     title: "Next generation"
-  })
-  previous_button.setAttribute("aria-label", "Previous generation")
-  next_button.setAttribute("aria-label", "Next generation")
-  const generations_c = t.utils_c(
-    { className: "generation-controls" },
-    previous_button,
-    generation_label,
-    next_button
-  )
-  if (message.role === "assistant") elem.append(generations_c)
+  }) as HTMLButtonElement
+
+  const generations_c = t.utils_c(delete_button)
+  if (message.role === "assistant") {
+    generations_c.append(t.group_c(
+      previous_button,
+      generation_label,
+      next_button
+    ))
+  }
+  elem.append(generations_c)
 
   const controller = {
     bubby,
@@ -592,24 +664,26 @@ async function message_controller (bubby: Bubby, chat: Chat, message: Message, t
     textgens,
     elem,
     content_c,
-    generation_label,
-    previous_button,
-    next_button
+    delete_btn: delete_button,
+    textgen_label: generation_label,
+    prev_btn: previous_button,
+    next_btn: next_button
   }
   message_controllers.set(message.id, controller)
-  refresh_generation_controls(controller)
+  refresh_textgen_ctrls(controller)
   previous_button.addEventListener("click", () => void select_generation(controller, -1))
   next_button.addEventListener("click", () => void select_generation(controller, 1))
   return controller
 }
 
-function refresh_generation_controls(ctrl: MessageController) {
+function refresh_textgen_ctrls(ctrl: MessageController) {
   const count = ctrl.textgens.length
   const picked = Math.max(0, Math.min(ctrl.message.picked, Math.max(0, count - 1)))
   ctrl.message.picked = picked
-  ctrl.generation_label.innerText = count ? `${picked + 1} / ${count}` : "1 / 1"
-  ctrl.previous_button.disabled = generation_active || picked <= 0
-  ctrl.next_button.disabled = generation_active
+  ctrl.textgen_label.innerText = count ? `${picked + 1} / ${count}` : "1 / 1"
+  ctrl.prev_btn.disabled = generation_active || picked <= 0
+  ctrl.next_btn.disabled = generation_active
+  ctrl.delete_btn.disabled = generation_active && generating_message_id === ctrl.message.id
 }
 
 async function select_generation(ctrl: MessageController, direction: -1 | 1) {
@@ -623,7 +697,7 @@ async function select_generation(ctrl: MessageController, direction: -1 | 1) {
     const content = ctrl.textgens[next_index].content
     ctrl.message.content = content
     ctrl.content_c.innerHTML = await format_displayed_msg(content)
-    refresh_generation_controls(ctrl)
+    refresh_textgen_ctrls(ctrl)
     return
   }
 
@@ -717,7 +791,8 @@ async function gen_message (
 ): Promise<TextGen|undefined> {
   if (generation_active) return
   generation_active = true
-  refresh_generation_controls(ctrl)
+  generating_message_id = ctrl.message.id
+  refresh_textgen_ctrls(ctrl)
   TEMP.text_gen_aborter = new AbortController()
   const initial_text = resume ? ctrl.message.content ?? "" : ""
   ctrl.content_c.innerHTML = "";
@@ -756,7 +831,8 @@ async function gen_message (
   } finally {
     ctrl.content_c.classList.remove("pending");
     generation_active = false
-    refresh_generation_controls(ctrl)
+    generating_message_id = null
+    refresh_textgen_ctrls(ctrl)
   }
   
   if (!alternative) await update_entry("messages", ctrl.message.id, { content: text })
@@ -782,7 +858,7 @@ async function gen_message (
   })
   ctrl.message.content = text
   ctrl.content_c.innerHTML = await format_displayed_msg(text)
-  refresh_generation_controls(ctrl)
+  refresh_textgen_ctrls(ctrl)
 
   return llm_gen_entry
 }
@@ -834,22 +910,19 @@ export async function send() {
     throw Error(`Speaker is not specified`);
   }
 
-  // Make user msg
+  // Empty prompts request an assistant continuation without adding a user turn.
   const prompt = prompt_c.innerText as string;
-  const user_msg: CoreMessage = {
+  const has_prompt = prompt.trim().length > 0
+  const saved_user_msg: Message | null = has_prompt ? {
     role: "user",
     content: prompt,
-  };
-
-  const saved_user_msg: Message = {
-    ...user_msg,
     chat_id: TEMP.chat.id!,
     id: crypto.randomUUID(),
     speaker_id,
     listener_id,
     created_at: Temporal.Now.instant().epochMilliseconds,
     picked: 0,
-  }
+  } : null
 
   const saved_llm_msg: Message = {
     role: "assistant",
@@ -867,19 +940,20 @@ export async function send() {
   if (!speaker) throw Error(`Speaker with ID ${speaker_id} does not exist`)
   if (!listener) throw Error(`Listener with ID ${listener_id} does not exist`)
   
-  // Save new user msg
-  await create_entry("messages", saved_user_msg)
+  if (saved_user_msg) await create_entry("messages", saved_user_msg)
 
   prompt_c.innerHTML = ""; // Clean the input elem
 
   
   const chat = TEMP.chat as Chat
 
-  const user_msg_ctrl = await message_controller(speaker, chat, saved_user_msg, [])
   const llm_msg_ctrl = await message_controller(listener, chat, saved_llm_msg, [])
 
-  // append user message elem & placeholder for char reply
-  msg_list.append(user_msg_ctrl.elem);
+  // Append the user turn only when the prompt contains text.
+  if (saved_user_msg) {
+    const user_msg_ctrl = await message_controller(speaker, chat, saved_user_msg, [])
+    msg_list.append(user_msg_ctrl.elem)
+  }
   msg_list.append(llm_msg_ctrl.elem);
 
   // ACTUALLY GENERATE THE TEXT
@@ -898,23 +972,7 @@ export async function load_chat(chat: Chat) {
     OPEN CHAT
   */
   const interaction_c = q("interactions-c")! as HTMLDivElement
-  const bubbies = await get_chat_bubbies(chat.id)
-  TEMP.involved_bubby_ids = bubbies.map(c => c.id)
-  /* SEND CONFIG UI < ADD PERSONA & TARGET CHAR OPTIONS */
-
-  const ps = q("select.persona") as HTMLSelectElement;
-  const tg = q("select.target_char") as HTMLSelectElement;
-
-  ps.replaceChildren(
-    ps.firstElementChild!,
-    ...bubbies.map((char) => t.option(char.id))
-  );
-  tg.replaceChildren(
-    tg.firstElementChild!,
-    ...bubbies.map((char) => t.option(char.id))
-  );
-  ps.value = chat.speaker_id ?? ""
-  tg.value = chat.listener_id ?? ""
+  await refresh_chat_bubby_selects(TEMP.chat as Chat)
 
   /* SHOW MESSAGES */
   const history = await get_recent_messages(chat.id, 0, 20)

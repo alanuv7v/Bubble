@@ -2,7 +2,7 @@ import TEMP from "./TEMP.ts";
 import yaml from "yaml";
 
 import t from "./tags.ts";
-import { create_entry, get_entry, load_chat, send, resume_last_reply, update_entry, sync_chat_bubbies, get_chat_bubby_ids, get_recent_entries } from "./chat.ts";
+import { create_entry, get_entry, load_chat, send, resume_last_reply, update_entry, update_chat_cast, refresh_chat_bubby_selects, get_chat_bubby_ids, get_recent_entries } from "./chat.ts";
 import { Bubby, Chat, instantiate, LlmConfig, LlmParams } from "./definitions.ts";
 import obj_editor from "./ui_components/obj_editor.ts";
 import { user_config_def } from "./user_config.ts";
@@ -62,6 +62,76 @@ async function replace_list<T>(
   render_item: (item: T) => HTMLElement | Promise<HTMLElement>
 ) {
   container.replaceChildren(...await Promise.all(items.map(render_item)))
+}
+
+async function save_active_chat_cast() {
+  const chat_id = TEMP.chat.id
+  if (!chat_id) throw new Error("Chat ID not specified")
+  const cast = await update_chat_cast(
+    chat_id,
+    TEMP.chat.speaker_id ?? null,
+    TEMP.chat.listener_id ?? null,
+    TEMP.involved_bubby_ids,
+    TEMP.chat as Chat
+  )
+  Object.assign(TEMP.chat, {
+    speaker_id: cast.speaker_id,
+    listener_id: cast.listener_id
+  })
+  TEMP.involved_bubby_ids = cast.bubby_ids
+  await refresh_chat_bubby_selects(TEMP.chat as Chat)
+}
+
+async function render_chat_editor() {
+  const chat_id = TEMP.chat.id
+  if (!chat_id) return
+  TEMP.chat = (await get_entry("chats", chat_id))!
+  TEMP.involved_bubby_ids = await get_chat_bubby_ids(chat_id)
+
+  const save = () => save_action(async () => {
+    await save_active_chat_cast()
+    await render_chat_editor()
+  })
+  const editor = obj_editor(Chat, TEMP.chat, { save }, "Chat")
+  const editor_2 = obj_editor(
+    { __type: "set", allows: { __type: "string" } },
+    TEMP.involved_bubby_ids,
+    { save },
+    "Bubbies In The Chat"
+  )
+  edit_chat_c.replaceChildren(editor, editor_2)
+}
+
+async function set_live_chat_role(role: "speaker" | "listener", value: string) {
+  const chat_id = TEMP.chat.id
+  if (!chat_id) return
+  const previous = role === "speaker" ? TEMP.chat.speaker_id : TEMP.chat.listener_id
+  if (role === "speaker") TEMP.chat.speaker_id = value || null
+  else TEMP.chat.listener_id = value || null
+
+  try {
+    const cast = await update_chat_cast(
+      chat_id,
+      role === "speaker" ? value || null : undefined,
+      role === "listener" ? value || null : undefined,
+      TEMP.involved_bubby_ids
+    )
+    Object.assign(TEMP.chat, {
+      speaker_id: cast.speaker_id,
+      listener_id: cast.listener_id
+    })
+    TEMP.involved_bubby_ids = cast.bubby_ids
+    await refresh_chat_bubby_selects(TEMP.chat as Chat)
+  } catch (e) {
+    if (role === "speaker") TEMP.chat.speaker_id = previous ?? null
+    else TEMP.chat.listener_id = previous ?? null
+    stat_c.innerText = (e as Error).message || String(e)
+    const current = await get_entry("chats", chat_id)
+    if (current) {
+      Object.assign(TEMP.chat, current)
+      await refresh_chat_bubby_selects(current)
+    }
+  }
 }
 
 const enter_chat = t.enter_chat(
@@ -269,6 +339,10 @@ const in_chat_c = t.in_chat(
             innerText: "Resume",
             onclick: async () => {
               try {
+                if (!prompt_c.innerText.trim()) {
+                  await send()
+                  return
+                }
                 const resumed = await resume_last_reply()
                 if (!resumed) stat_c.innerText = "No interrupted reply to resume."
               } catch (e) {
@@ -287,7 +361,7 @@ const in_chat_c = t.in_chat(
             className: "persona",
             onchange: (event: Event) => {
               const target = event.target as HTMLSelectElement;
-              TEMP.chat.speaker_id = target.value;
+              void set_live_chat_role("speaker", target.value)
             },
           },
           t.option({ value: "", innerText: "Speaker" })
@@ -301,7 +375,7 @@ const in_chat_c = t.in_chat(
             className: "target_char",
             onchange: (event: Event) => {
               const target = event.target as HTMLSelectElement;
-              TEMP.chat.listener_id = target.value;
+              void set_live_chat_role("listener", target.value)
             },
           },
           t.option({ value: "", innerText: "Listener" })
@@ -452,21 +526,7 @@ const refresh: Partial<Record<keyof typeof nav, () => void | Promise<void>>> = {
     refresh_llm_config_list()
   },
   async "Edit Chat" () {
-    
-    TEMP.chat = (await get_entry("chats", TEMP.chat.id!))!
-    TEMP.involved_bubby_ids = await get_chat_bubby_ids(TEMP.chat.id!)
-
-    let editor = obj_editor(Chat, TEMP.chat, {
-      save (old_id) {
-        return save_action(() => update_entry("chats", old_id ?? TEMP.chat.id!, TEMP.chat))
-      }
-    }, "Chat")
-    let editor_2 = obj_editor({ __type: "set", allows: { __type: "string" } }, TEMP.involved_bubby_ids, {
-      save (old_id) {
-        return save_action(() => sync_chat_bubbies(old_id ?? TEMP.chat.id!, TEMP.involved_bubby_ids))
-      }
-    }, "Bubbies In The Chat")
-    edit_chat_c.replaceChildren(editor, editor_2)
+    await render_chat_editor()
   },
   async "Edit Bubby" () {
     if (!TEMP.edited_bubby_id) return

@@ -185,28 +185,17 @@ utils-c {
   gap: 0.25lh;
 }
 
-message-c > .generation-controls {
+message-c > utils-c {
   opacity: 100%;
   align-items: center;
   align-self: flex-end;
   gap: 0.4em;
-
-  button {
-    min-width: 2em;
-    padding: 0 0.4em;
-  }
-
-  .generation-index {
-    min-width: 3.5em;
-    text-align: center;
-    font-size: 0.85em;
-    opacity: 0.75;
-  }
 }
 
-message-c > .generation-controls button:disabled {
-  opacity: 0.4;
-  cursor: default;
+message-c {
+  span.generation-index {
+    padding: 0.5lh
+  }
 }
 
 
@@ -889,4 +878,14 @@ llm-config {
 
 stat-c {
   margin: 0.5lh
+}
+
+guide-c {
+  background: var(--bg-color)
+  display: flex
+  flex-direction: column
+  align-items: center
+  justify-content: center
+  gap: 1lh
+  padding: 0.5lh
 }
