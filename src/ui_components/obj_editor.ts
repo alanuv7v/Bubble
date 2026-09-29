@@ -51,7 +51,7 @@ export function val_c (
     : def && raw !== null && typeof raw === "object" && !Array.isArray(raw)
       ? obj_c(raw, def)
       : inferred_control(field)
-  control.classList.add("obj-editor-control")
+  control.classList.add("control")
   if (is_duplicate?.(raw)) mark_duplicate(control)
 
   if (!def?.nullable) return [control]
@@ -93,7 +93,7 @@ export function val_c (
   }
   set_disabled(raw == null)
   const nullable_label = t.label(
-    { className: "nullable-toggle" },
+    { className: "nullable" },
     nullable,
     t.span("Null")
   )
@@ -364,7 +364,7 @@ export function arr_c (
         row.remove()
       }
     })
-    row = t.item_c()
+    row = t.group_c({ className: "horizontal" })
     row.append(...controls, remove_button)
     if (focus) controls[0]?.focus()
     return row
@@ -372,7 +372,7 @@ export function arr_c (
 
   dom.append(...row_keys.map((row_key) => item_c(row_key)))
 
-  const notice = t.span({ className: "set-notice", role: "status" })
+  const notice = t.span({ className: "notice", role: "status" })
   const add_btn = t.button({
     innerText: "+",
     onclick () {

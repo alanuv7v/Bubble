@@ -10,14 +10,12 @@ export default function multi_select_picker(
   const root = document.createElement("div") as HTMLDivElement & {
     setOptions: (next_options: Option[], next_selected: string[]) => void
   }
-  root.className = "multi-select-picker"
   root.id = id
   const button = document.createElement("button")
   button.type = "button"
-  button.className = "multi-select-picker-button"
   button.innerText = title
   const popup = document.createElement("div")
-  popup.className = "multi-select-picker-popup"
+  popup.className = "popup"
   popup.hidden = true
   button.onclick = () => { popup.hidden = !popup.hidden }
   root.append(button, popup)

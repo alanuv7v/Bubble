@@ -8,9 +8,9 @@ export default async function render_list<T>(
   delete_item: (item: T) => Promise<unknown>
 ) {
   const rendered_items = await Promise.all(items.map(async (item) => {
-    const row = t.div({ className: "entity-list-item" })
+    const row = t.div({ className: "item" })
     const content = await render_item(item)
-    content.classList.add("entity-list-item-content")
+    content.classList.add("content")
 
     const delete_button = confirm_btn("X", () => {
       delete_button.disabled = true
@@ -22,12 +22,12 @@ export default async function render_list<T>(
       })
     })
     Object.assign(delete_button, {
-      className: "entity-list-delete",
+      className: "delete",
       title: "Delete item"
     })
     delete_button.addEventListener("click", (event) => event.stopPropagation())
 
-    const error_c = t.span({ className: "entity-list-error", role: "status" })
+    const error_c = t.span({ className: "error", role: "status" })
     row.append(content, delete_button, error_c)
     return row
   }))

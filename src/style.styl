@@ -10,6 +10,7 @@
 }
 
 * {
+  line-height: 1lh
   /* line-height: 1lh !important; */
   transition: box-shadow 0.125s, outline-color 0.2s;
   animation: fadein 0.3s ease-in;
@@ -181,11 +182,11 @@ select {
   font-size: inherit;
 }
 
-.multi-select-picker {
+#chat-listeners {
   position: relative;
 }
 
-.multi-select-picker-popup {
+#chat-listeners > .popup {
   position: absolute;
   z-index: 10;
   top: 100%;
@@ -200,11 +201,11 @@ select {
   box-shadow: 0 0.25em 0.8em #0004;
 }
 
-.multi-select-picker-popup[hidden] {
+#chat-listeners > .popup[hidden] {
   display: none;
 }
 
-.multi-select-picker-popup label {
+#chat-listeners > .popup > label {
   display: flex;
   align-items: center;
   gap: 0.4em;
@@ -224,7 +225,7 @@ message-c > utils-c {
 }
 
 message-c {
-  span.generation-index {
+  utils-c group-c > span {
     padding: 0.5lh
   }
 }
@@ -547,39 +548,66 @@ enter-chat {
   align-items: center;
   justify-content: center;
   
-  chat-list {
-    flex-grow: 1
+  list-c > .item > .content {
+      flex-wrap: wrap
+      > div:first-child {
+        flex-grow: 1
+        display: flex
+        flex-direction: column
+        min-width: 40ch
+        gap: 0.25lh
+      }
   }
 }
 
-.entity-list-item {
+list-c > .item {
   display: flex;
   align-items: center;
   gap: 0.5lh;
   padding: 0.5lh;
+  transition: background 0.2s ease;
+  border-radius: var(--border-rad)
 }
 
-.entity-list-item-content {
+list-c > .item > .content {
+
+  display: flex
+  gap: 1lh;
+
   flex: 1;
   min-width: 0;
   padding: 0.5lh;
   cursor: pointer;
-  transition: background 0.2s ease;
 }
 
-.entity-list-item-content:hover {
+list-c > .item:hover {
   background-color: var(--active-bg-color);
 }
 
-.entity-list-delete {
+list-c > .item > .delete {
   flex-shrink: 0;
 }
 
-.entity-list-error {
+.error {
   color: var(--error);
 }
 
-.create-entry-control input[type="text"] {
+enter-chat list-c > .item > .content > .profiles {
+  display: flex;
+  align-items: center;
+  gap: 0.5lh;
+  overflow: auto
+  align-self: flex-end
+  position: relative
+}
+
+enter-chat list-c > .item > .content > .profiles img.profile {
+  width: 8lh;
+  height: 8lh;
+  border-radius: var(--border-rad);
+}
+
+input[placeholder="ID"] {
   min-width: 20ch;
 }
 
@@ -782,11 +810,11 @@ arr-c {
   display: flex
   flex-wrap: wrap
   gap: 0.5ch
-  > item-c {
+  > group-c {
     display: flex
   }
 }
-arr-c:has(> item-c > obj-c) {
+arr-c:has(> group-c > obj-c) {
   flex-direction: column
 }
 
@@ -813,7 +841,7 @@ val-c {
   //padding: 0.5lh
 }
 
-.nullable-toggle {
+obj-editor label:has(> input[type="checkbox"]) {
   display: inline-flex
   align-items: center
   gap: 0.35em
@@ -821,12 +849,12 @@ val-c {
   font-size: 0.85em
 }
 
-.obj-editor-control.disabled {
+obj-editor .control.disabled {
   opacity: 0.45
   pointer-events: none
 }
 
-.set-notice:not(:empty) {
+obj-editor .notice:not(:empty) {
   color: var(--error)
   font-size: 0.85em
 }
@@ -836,6 +864,7 @@ obj-editor {
   flex-direction: column
   gap: 0.5lh
   max-width: 100%
+  align-items: flex-end
 }
 
 
@@ -855,7 +884,7 @@ bubbies-c {
   flex-direction: column
   align-items: center
 }
-bubbies-list {
+bubbies-c > list-c {
   display: flex
   flex-wrap: wrap
   padding: 0.5lh
@@ -879,6 +908,7 @@ bubbies-list {
     flex-direction: column
     width: 20ch
     outline: 1px solid var(--mild-border-color)
+    border-radius: var(--border-rad)
     
   }
   > div:hover {
@@ -888,16 +918,17 @@ bubbies-list {
 }
 
 
-edit-chat, edit-bubby, llm-config {
+edit-chat, edit-bubby, llm-config, user-config {
   display: flex
   flex-direction: column
-  align-items: stretch
+  align-items: center
 
   padding: 0.5lh
   gap: 0.5lh
 
   overflow: auto
 }
+
 
 edit-chat {
   min-width: 80ch
@@ -929,12 +960,19 @@ img.profile {
 }
 
 
-llm-configs {
+enter-chat, bubbies-c, llm-configs {
+  display: flex
   flex-direction: column
   overflow: auto
-  > list-c > * {
-    padding: 1lh
-    background: var(--bg-color)
+  gap: 0.5lh
+  width: 100%
+  height: 100%
+  padding: 0.5lh
+  > list-c {
+    width: 100%
+    flex-grow: 1
+    align-items: center
+    justify-content: center
   }
 }
 
@@ -950,6 +988,8 @@ stat-c {
 }
 
 guide-c {
+  width: 100%
+  height: 100%
   background: var(--bg-color)
   display: flex
   flex-direction: column
@@ -958,3 +998,4 @@ guide-c {
   gap: 1lh
   padding: 0.5lh
 }
+

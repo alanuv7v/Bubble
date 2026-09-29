@@ -722,19 +722,16 @@ async function message_controller (bubby: Bubby, chat: Chat, message: Message, t
 
   const delete_button = confirm_btn("X", () => void delete_message(controller))
   Object.assign(delete_button, {
-    className: "delete-message",
     title: "Delete message"
   })
-  const generation_label = t.span({ className: "generation-index" }) as HTMLButtonElement
+  const generation_label = t.span() as HTMLButtonElement
   const previous_button = t.button({
     type: "button",
-    className: "previous-generation",
     innerText: "<",
     title: "Previous generation"
   }) as HTMLButtonElement
   const next_button = t.button({
     type: "button",
-    className: "next-generation",
     innerText: ">",
     title: "Next generation"
   }) as HTMLButtonElement
@@ -1100,7 +1097,7 @@ export async function load_chat(chat: Chat) {
   /* SHOW MESSAGES */
   const history = await get_recent_messages(chat.id, 0, 20)
   const chat_speaker = TEMP.chat.speaker_id ? await get_entry("bubbies", TEMP.chat.speaker_id) : null
-  const chat_listener = TEMP.chat.listener_ids[0] ? await get_entry("bubbies", TEMP.chat.listener_ids[0]) : null
+  const chat_listener = TEMP.chat.listener_ids![0] ? await get_entry("bubbies", TEMP.chat.listener_ids![0]) : null
 
   // Repair messages saved with the visible dropdown placeholder labels as IDs.
   if (chat_speaker && chat_listener) {

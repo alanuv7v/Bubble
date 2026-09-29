@@ -13,6 +13,15 @@
   src: local("Circular std"), url(../fonts/CircularStd-Book.ttf) format("truetype");
 }
 
+@font-face {
+  font-family: "Baskervville";
+  src: local("Baskervville"), url(../fonts/Baskervville-Regular.ttf) format("truetype");
+}
+
+@font-face {
+  font-family: "SUIT";
+  src: local("SUIT"), url(../fonts/SUIT-Variabe.woff2) format("woff2");
+}
 /* 
 -----------
 */
@@ -171,7 +180,7 @@ hsl2(hue, saturation, lightness)
   body {
     background-image: url("../assets/bg/11.jpg");
   }
-  font-family: "Inconsolata", "SUIT", "SUIT Variable";
+  font-family: "Poppins", "Inconsolata", "SUIT", "SUIT Variable";
 }
 
 @css {
@@ -184,7 +193,7 @@ hsl2(hue, saturation, lightness)
       );
     }
     
-    input, button, select, *[contenteditable="true"], group-c, obj-c, bubbies-list>div {
+    input, button, select, *[contenteditable="true"], group-c, obj-c, bubbies-list>div, list-c > .item, guide-c {
       background: color-mix(
         in hsl,
         var(--bg-color),
@@ -193,7 +202,7 @@ hsl2(hue, saturation, lightness)
       backdrop-filter: blur(4px);
     }
 
-    input:focus, button:focus, select:focus, *[contenteditable="true"]:focus {
+    input:focus, button:focus, select:focus, *[contenteditable="true"]:focus, list-c > .item:hover {
       background: color-mix(
         in hsl,
         var(--active-bg-color),

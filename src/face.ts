@@ -2,7 +2,7 @@ import TEMP from "./TEMP.ts";
 import yaml from "yaml";
 
 import t from "./tags.ts";
-import { create_entry, delete_entry, get_entry, load_chat, send, resume_last_reply, update_entry, update_chat_cast, refresh_chat_bubby_selects, get_chat_bubby_ids, get_recent_entries } from "./chat.ts";
+import { create_entry, delete_entry, get_entry, load_chat, send, resume_last_reply, update_entry, update_chat_cast, refresh_chat_bubby_selects, get_chat_bubby_ids, get_chat_bubbies, get_recent_entries } from "./chat.ts";
 import { Bubby, Chat, instantiate, LlmConfig, LlmParams } from "./definitions.ts";
 import obj_editor from "./ui_components/obj_editor.ts";
 import { user_config_def } from "./user_config.ts";
@@ -11,7 +11,7 @@ import render_list from "./ui_components/render_list.ts";
 import multi_select_picker from "./ui_components/multi_select_picker.ts";
 
 
-const chat_list_c = t.chat_list()
+const chat_list_c = t.list_c()
 
 const stat_c = t.stat_c() as HTMLElement;
 
@@ -37,7 +37,7 @@ async function create_named(
   }
 }
 
-function create_button(
+function creation_button(
   label: string,
   prefix: string,
   create: (name: string) => Promise<unknown>,
@@ -49,7 +49,7 @@ function create_button(
     placeholder: "ID",
   }) as HTMLInputElement
   return t.group_c(
-    { className: "horizontal create-entry-control" },
+    { className: "horizontal" },
     id_input,
     t.button({
       innerText: label,
@@ -157,7 +157,7 @@ async function set_live_chat_speaker(value: string) {
 
 const enter_chat = t.enter_chat(
   chat_list_c,
-  create_button(
+  creation_button(
     "Create Chat", 
     "Chat", 
     async (name) => create_entry(
@@ -213,7 +213,13 @@ function timestamp_to_info(timestamp: number) {
 
 async function render_chat_list (chats: Chat[]) {
   await render_list(chat_list_c, chats, async (chat) => {
-    const bubby_ids = await get_chat_bubby_ids(chat.id)
+    const bubbies = await get_chat_bubbies(chat.id)
+    const bubby_images = await Promise.all(bubbies.map(async (bubby) => t.img({
+      className: "profile",
+      src: await get_img_src(`${bubby.id}.webp`, "assets/profile_fallback.webp"),
+      alt: bubby.name,
+      title: bubby.name,
+    })))
     return t.div(
       { 
         onclick () {
@@ -221,10 +227,17 @@ async function render_chat_list (chats: Chat[]) {
           load_chat(chat)
         }
       },
-      t.h2(chat.name),
-      t.div({ innerText: bubby_ids.join(", ") }),
-      t.div({ innerText: `created: ${timestamp_to_info(chat.created_at).toLocaleString()}` }),
-      t.div({ innerText: `last use: ${chat.last_use_at ? timestamp_to_info(chat.last_use_at).toLocaleString() : "never"}` })
+      t.div(
+        { className: "info" },
+        t.h2(chat.name),
+        t.div({ className: "names", innerText: bubbies.map((bubby) => bubby.name).join(", ") }),
+        t.div(
+          { className: "meta" },
+          t.div({ innerText: `created: ${timestamp_to_info(chat.created_at).toLocaleString()}` }),
+          t.div({ innerText: `last use: ${chat.last_use_at ? timestamp_to_info(chat.last_use_at).toLocaleString() : "never"}` })
+        ),
+      ),
+      t.div({ className: "profiles" }, ...bubby_images),
     )
   }, async (chat) => {
     await delete_entry("chats", chat.id)
@@ -232,10 +245,10 @@ async function render_chat_list (chats: Chat[]) {
   })
 }
 
-const bubbies_list_c = t.bubbies_list()
+const list_c_c = t.list_c()
 const bubbies_c = t.bubbies_c(
-  bubbies_list_c,
-  create_button("Create Bubby", "Bubby", async (name) => {
+  list_c_c,
+  creation_button("Create Bubby", "Bubby", async (name) => {
     const bubby: Bubby = {
       id: name,
       name,
@@ -259,7 +272,7 @@ async function refresh_llm_config_list () {
 }
 const llm_configs_c = t.llm_configs(
   llm_config_list_c,
-  create_button("Create LLM Config", "LLM Config", (name) => create_entry("llm_configs", {
+  creation_button("Create LLM Config", "LLM Config", (name) => create_entry("llm_configs", {
     id: name,
     name,
     api_key: "",
@@ -269,7 +282,7 @@ const llm_configs_c = t.llm_configs(
 )
 
 async function render_bubby_list (bubbies: Bubby[]) {
-  await replace_list(bubbies_list_c, bubbies, async (bubby) => {
+  await replace_list(list_c_c, bubbies, async (bubby) => {
     let profile_img_src = await get_img_src(bubby.id + ".webp", "assets/profile_fallback.webp")
 
     const img_c = t.img({
@@ -440,64 +453,80 @@ const controls_c = t.controls_c(
   })
 )
 const guide_c = t.guide_c(
-t.div(`Welcome to Bubble.
+  t.div(`Welcome to Bubble.
 Configure your LLM API.`),
-t.input({
-type: "text",
-value: `API key`}),
-t.input({
-type: "text",
-value: `API URL`}),
+  t.input({
+    type: "text",
+    placeholder: `API key`,
+  }),
+  t.input({
+    type: "text",
+    placeholder: `API URL`,
+  }),
 
-t.details(
-t.summary("What options do I have?"),
-t.div(`Currently, using OpenRouter is what this app is oriented for.
+  t.details(
+    t.summary("What options do I have?"),
+    t.div(`Currently, using OpenRouter is what this app is oriented for.
 Setting other specific API URL in your LLM config is possible.
-However, if the API of the provider significantly differs from OpenRouter's or OpenAI's, the app may not work as intended.`)
-),
-  create_button("Create your first bubby.", "New Bubby", (id) => create_entry("bubbies", {
-      id,
-      name: id,
-      desc: "",
-      first_message: null,
-      llm_config_id: null
-    }), undefined, (id) => {
-      TEMP.edited_bubby_id = id
-      show_one_dom("Edit Bubby")
-    }),
-t.div(`Or talk to our sample bubbies.`),
+However, if the API of the provider significantly differs from OpenRouter's or OpenAI's, the app may not work as intended.`),
+  ),
+  creation_button(
+    "Create your first bubby.",
+    "New Bubby",
+    (id) =>
+      create_entry("bubbies", {
+        id,
+        name: id,
+        desc: "",
+        first_message: null,
+        llm_config_id: null,
+      }),
+    undefined,
+    (id) => {
+      TEMP.edited_bubby_id = id;
+      show_one_dom("Edit Bubby");
+    },
+  ),
+  t.div(`Or talk to our sample bubbies.`),
 
-create_button("Create your persona.", "New Bubby (Your Persona)", (id) => create_entry("bubbies", {
-      id,
-      name: id,
-      desc: "",
-      first_message: null,
-      llm_config_id: null
-    }), undefined, (id) => {
-      TEMP.edited_bubby_id = id
-      show_one_dom("Edit Bubby")
-    }),
-t.div(`Or go anonymous.`),
+  creation_button(
+    "Create your persona.",
+    "New Bubby (Your Persona)",
+    (id) =>
+      create_entry("bubbies", {
+        id,
+        name: id,
+        desc: "",
+        first_message: null,
+        llm_config_id: null,
+      }),
+    undefined,
+    (id) => {
+      TEMP.edited_bubby_id = id;
+      show_one_dom("Edit Bubby");
+    },
+  ),
+  t.div(`Or go anonymous.`),
 
-t.button({
-  innerText: "Now you can chat.",
-  onclick: () => {
-    show_one_dom("Enter")
-  },
-}),
-t.div("You can always configure details later. Enjoy!"),
+  t.button({
+    innerText: "Now you can chat.",
+    onclick: () => {
+      show_one_dom("Enter");
+    },
+  }),
+  t.div("You can always configure details later. Enjoy!"),
 
-t.details(
-t.summary("How is my data kept?"),
-t.div(`In a desktop app:
+  t.details(
+    t.summary("How is my data kept?"),
+    t.div(`In a desktop app:
 Your data is kept in a SQLite DB file in your dedvice's filesystem.
 
 In a browser:
 Your data is kept in your OPFS(Origin Private File System), meaning your browser, ultimately your device.
 
-While this very app stores all personal data in your device only, the LLM API provider you are using might retain usage data, depending on their policies and your settings. So be sure to check them.`)
-),
-) as HTMLDivElement
+While this very app stores all personal data in your device only, the LLM API provider you are using might retain usage data, depending on their policies and your settings. So be sure to check them.`),
+  ),
+) as HTMLDivElement;
 
 export function show_one_dom (title: keyof typeof nav) {
   const doms = Object.values(nav)
@@ -552,7 +581,7 @@ const refresh: Partial<Record<keyof typeof nav, () => void | Promise<void>>> = {
         })
       },
     }) as HTMLDivElement
-    user_config_c.replaceChildren(...e.children)
+    user_config_c.replaceChildren(e)
   },
   async "LLM Config" () {
     if (!TEMP.edited_llm_config_id) return
@@ -563,7 +592,7 @@ const refresh: Partial<Record<keyof typeof nav, () => void | Promise<void>>> = {
         return save_action(() => update_entry("llm_configs", old_id ?? TEMP.edited_llm_config_id!, base))
       },
     }) as HTMLDivElement
-    llm_config_c.replaceChildren(...e.children)
+    llm_config_c.replaceChildren(e)
     
     // return t.editor_c(
     //   t.input({ 
