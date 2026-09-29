@@ -235,7 +235,7 @@ async function render_chat_list (chats: Chat[]) {
           { className: "meta" },
           t.div({ innerText: `created: ${timestamp_to_info(chat.created_at).toLocaleString()}` }),
           t.div({ innerText: `last use: ${chat.last_use_at ? timestamp_to_info(chat.last_use_at).toLocaleString() : "never"}` })
-        ),
+        )
       ),
       t.div({ className: "profiles" }, ...bubby_images),
     )

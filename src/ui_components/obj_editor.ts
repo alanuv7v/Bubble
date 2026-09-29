@@ -155,8 +155,7 @@ function remove_duplicate_items (items: any[]) {
 function number_control (field: FieldContext, integer: boolean): HTMLElement {
   const def = field.def!
   const field_def = { ...TYPES[def.__type]?.field, ...def }
-  let input: HTMLInputElement
-  input = t.input({
+  const input = t.input({
     type: "number",
     value: field.raw ?? field_def.default ?? 0,
     min: field_def.min,
@@ -207,6 +206,7 @@ function dynamic_choice_control (field: FieldContext): HTMLElement {
   let choices: string[] = []
   let update_from_input = true
   let control: HTMLElement
+  // The text field filters choices; blur only commits an exact valid value.
   const input = t.input({
     type: "text",
     value: field.raw ?? field.def?.default ?? "",

@@ -133,6 +133,7 @@ export async function rename_asset(old_name: string, new_name: string): Promise<
     throw error
   }
 
+  // Avoid replacing an image that already belongs to the destination ID.
   try {
     await root.getFileHandle(new_name)
     throw new Error(`An asset named ${new_name} already exists`)
@@ -152,6 +153,7 @@ export async function rename_asset(old_name: string, new_name: string): Promise<
     throw error
   }
 
+  // Keep the old file recoverable until the caller's database update succeeds.
   return async () => {
     const restored = await root.getFileHandle(old_name, { create: true })
     const writable = await restored.createWritable()

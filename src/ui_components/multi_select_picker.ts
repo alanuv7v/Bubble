@@ -14,17 +14,18 @@ export default function multi_select_picker(
   const button = document.createElement("button")
   button.type = "button"
   button.innerText = title
-  const popup = document.createElement("div")
-  popup.className = "popup"
-  popup.hidden = true
-  button.onclick = () => { popup.hidden = !popup.hidden }
-  root.append(button, popup)
+  const multiselect = document.createElement("div")
+  multiselect.className = "multiselect"
+  multiselect.hidden = true
+  button.onclick = () => { multiselect.hidden = !multiselect.hidden }
+  root.append(button, multiselect)
 
   let current_options = options
   let current_selected = selected
+  // Derive checkbox order from the available options to keep selections stable.
   const render = () => {
     button.innerText = `${title} (${current_selected.length})`
-    popup.replaceChildren(...current_options.map((option) => {
+    multiselect.replaceChildren(...current_options.map((option) => {
       const label = document.createElement("label")
       const checkbox = document.createElement("input")
       checkbox.type = "checkbox"

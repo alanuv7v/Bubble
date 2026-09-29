@@ -58,6 +58,7 @@ const json_keys = {
   prompts: ['trigger_words'],
 } satisfies Record<TableName, string[]>
 
+// Keep JSON-backed columns as arrays and objects in app code, strings only at SQLite boundaries.
 export function parse_entry<K extends TableName>(
   table: K, 
   row: AsEntry<TableEntryMap[K]> | null
@@ -279,6 +280,7 @@ export type ChatCastState = {
 
 let chat_cast_write_queue: Promise<unknown> = Promise.resolve()
 
+// Serialize cast changes so membership and selected speakers cannot race each other.
 export function update_chat_cast(
   chat_id: Id,
   speaker_id: Id | null | undefined,
@@ -300,12 +302,14 @@ export function update_chat_cast(
       bubby_ids.push(next_speaker_id)
     }
     const normalized_bubby_ids = [...new Set(bubby_ids)]
+    // Explicit listener changes add members; membership edits prune removed listeners.
     if (listener_ids !== undefined) {
       for (const id of next_listener_ids) if (!normalized_bubby_ids.includes(id)) normalized_bubby_ids.push(id)
     } else {
       next_listener_ids = next_listener_ids.filter((id) => normalized_bubby_ids.includes(id))
     }
     next_listener_ids = next_listener_ids.filter((id) => id !== next_speaker_id && normalized_bubby_ids.includes(id))
+    // Commit the junction rows and JSON selection together to keep them in sync.
     await exec_sql("BEGIN TRANSACTION")
     try {
       if (normalized_bubby_ids.length) {
@@ -351,18 +355,18 @@ export async function sync_chat_bubbies(chat_id: Id, bubby_ids: Id[]) {
   return update_chat_cast(chat_id, undefined, undefined, bubby_ids)
 }
 
-export const sync_chat_libraries = async (
+export const sync_chat_libraries = (
   chat_id: string,
   library_ids: string[]
 ) => {
-  return await sync_junction_table("chat_libraries", chat_id, library_ids)
+  return sync_junction_table("chat_libraries", chat_id, library_ids)
 }
 
-export const sync_library_prompts = async (
+export const sync_library_prompts = (
   library_id: string,
   prompt_ids: string[]
 ) => {
-  return await sync_junction_table("library_prompts", library_id, prompt_ids)
+  return sync_junction_table("library_prompts", library_id, prompt_ids)
 }
 
 export const sync_junction_table = async (
@@ -469,6 +473,7 @@ function resolve_multi_listener_property(listeners: Bubby[], property_path: stri
     return `${values.slice(0, -1).join(", ")}, and ${values.at(-1)}`
   }
 
+  // Keep long descriptions separate so each listener's property remains attributable.
   const blocks = entries.map((entry) => `${entry.name}:\n${entry.value}`)
   const longest_backtick_run = Math.max(
     0,
@@ -602,7 +607,10 @@ export async function gen_text_req (
         content = picked?.content ?? h.content ?? ""
       }
 
+      // Detect "[name]:" at the start
       const leading_label = /^\s*\[([^\]\r\n]+)\]\s*:/.exec(content)?.[1]?.trim().toLocaleLowerCase()
+      
+      // Group history needs speaker labels, but generated labels should not be doubled.
       const already_labeled = h.role === "assistant" && leading_label !== undefined &&
         h.speaker_ids.some((id) => [id, speaker_names.get(id)]
           .some((name) => name?.toLocaleLowerCase() === leading_label))
@@ -648,15 +656,13 @@ export async function gen_text_req (
     bubby_llm_config.api_url ?? 
     "https://openrouter.ai/api/v1/chat/completions"
   
-  const char_desc_is_in_template = merged_config.messages.some((message) =>
-    /\{\{\s*char\.desc\s*\}\}/.test(message.content)
-  )
-  const participant_prompt: CoreMessage[] = ctx.listeners.length > 1 ? [{
+  // A shared call needs each selected listener's identity and a distinct reaction.
+  const plz_label: CoreMessage = {
     role: "system",
-    content: `The following characters are all participating in this response. Include a distinct reaction from each one and label each part with that character's name. Keep their voices consistent with their descriptions.${char_desc_is_in_template ? "" : `\n\n${ctx.listeners.map((listener) => `# ${listener.name}\n${listener.desc}`).join("\n\n")}`}`
-  }] : []
+    content: `Label response from each character with that character's name.`
+  }
   const all_msgs = await replace_all_content_variables(
-    ctx, [...merged_config.messages, ...participant_prompt, ...core_history]
+    ctx, [...merged_config.messages, plz_label, ...core_history]
   );
 
   return {

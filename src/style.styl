@@ -13,7 +13,7 @@
   line-height: 1lh
   /* line-height: 1lh !important; */
   transition: box-shadow 0.125s, outline-color 0.2s;
-  animation: fadein 0.3s ease-in;
+  animation: fadein 0.2s ease-in;
 }
 
 
@@ -186,29 +186,27 @@ select {
   position: relative;
 }
 
-#chat-listeners > .popup {
+.multiselect {
   position: absolute;
   z-index: 10;
-  top: 100%;
   left: 0;
+  bottom: 100%
   min-width: 100%;
   max-height: 15lh;
   overflow: auto;
-  padding: 0.4em;
-  background: Canvas;
-  border: 1px solid currentColor;
-  border-radius: 0.4em;
-  box-shadow: 0 0.25em 0.8em #0004;
+  background: var(--bg-color)
+  border-radius: var(--border-rad)
+  padding: 0.5lh
 }
 
-#chat-listeners > .popup[hidden] {
+.multiselect[hidden] {
   display: none;
 }
 
-#chat-listeners > .popup > label {
+.multiselect > label {
   display: flex;
   align-items: center;
-  gap: 0.4em;
+  gap: 0.5ch
   white-space: nowrap;
 }
 
@@ -450,14 +448,17 @@ h1, h2, h3, h4, h5 {
 
 h1 {
   font-size: 3rem
+  line-height: 3lh
 }
 
 h2 {
   font-size: 1.5rem
+  line-height: 1.5lh
 }
 
 h3 {
   font-size: 1.25rem
+  line-height: 1.25lh
 }
 
 start-c {
@@ -550,7 +551,7 @@ enter-chat {
   
   list-c > .item > .content {
       flex-wrap: wrap
-      > div:first-child {
+      > .info {
         flex-grow: 1
         display: flex
         flex-direction: column

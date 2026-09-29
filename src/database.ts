@@ -156,6 +156,7 @@ export async function init() {
 
   const chat_columns = await exec_sql<{ name: string }>("PRAGMA table_info(chats)")
   const has_legacy_listener_id = chat_columns.some((entry) => entry.name === "listener_id")
+  // Fold the old single listener into the JSON list before removing that column.
   const chats_to_migrate = await exec_sql<{ id: string, listener_id: string | null, listener_ids: string }>(
     `SELECT id, ${has_legacy_listener_id ? "listener_id" : "NULL AS listener_id"}, listener_ids FROM chats`
   )
@@ -171,6 +172,7 @@ export async function init() {
     }
   }
   if (has_legacy_listener_id) {
+    // SQLite cannot drop this referenced column directly; rebuild chats while preserving its rows.
     await exec_sql("PRAGMA foreign_keys = OFF")
     await exec_sql("BEGIN TRANSACTION")
     try {
