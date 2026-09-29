@@ -119,3 +119,44 @@ export function safe_img(name: string, fallback = "") {
     t.source({srcset: `${fallback}`}),
   )
 }
+
+export async function rename_asset(old_name: string, new_name: string): Promise<() => Promise<void>> {
+  if (old_name === new_name) return async () => {}
+  const root = TEMP.assets_dir_handle
+  if (!root) throw new Error("Assets directory is not initialized")
+
+  let source: FileSystemFileHandle
+  try {
+    source = await root.getFileHandle(old_name)
+  } catch (error) {
+    if ((error as DOMException).name === "NotFoundError") return async () => {}
+    throw error
+  }
+
+  try {
+    await root.getFileHandle(new_name)
+    throw new Error(`An asset named ${new_name} already exists`)
+  } catch (error) {
+    if ((error as DOMException).name !== "NotFoundError") throw error
+  }
+
+  const file = await source.getFile()
+  const destination = await root.getFileHandle(new_name, { create: true })
+  try {
+    const writable = await destination.createWritable()
+    await writable.write(file)
+    await writable.close()
+    await root.removeEntry(old_name)
+  } catch (error) {
+    await root.removeEntry(new_name).catch(() => {})
+    throw error
+  }
+
+  return async () => {
+    const restored = await root.getFileHandle(old_name, { create: true })
+    const writable = await restored.createWritable()
+    await writable.write(file)
+    await writable.close()
+    await root.removeEntry(new_name)
+  }
+}

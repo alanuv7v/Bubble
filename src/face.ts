@@ -2,18 +2,16 @@ import TEMP from "./TEMP.ts";
 import yaml from "yaml";
 
 import t from "./tags.ts";
-import { create_entry, get_entry, load_chat, send, resume_last_reply, update_entry, update_chat_cast, refresh_chat_bubby_selects, get_chat_bubby_ids, get_recent_entries } from "./chat.ts";
+import { create_entry, delete_entry, get_entry, load_chat, send, resume_last_reply, update_entry, update_chat_cast, refresh_chat_bubby_selects, get_chat_bubby_ids, get_recent_entries } from "./chat.ts";
 import { Bubby, Chat, instantiate, LlmConfig, LlmParams } from "./definitions.ts";
 import obj_editor from "./ui_components/obj_editor.ts";
 import { user_config_def } from "./user_config.ts";
-import { get_img_src, pick_and_save_image } from "./assets.ts";
+import { get_img_src, pick_and_save_image, rename_asset } from "./assets.ts";
+import render_list from "./ui_components/render_list.ts";
+import multi_select_picker from "./ui_components/multi_select_picker.ts";
 
 
 const chat_list_c = t.chat_list()
-
-const new_chat_input = t.new_chat_id({
-  contentEditable: "true",
-}) as HTMLElement;
 
 const stat_c = t.stat_c() as HTMLElement;
 
@@ -21,14 +19,18 @@ const stat_c = t.stat_c() as HTMLElement;
 const randname = (prefix: string = "") => prefix + " " + Temporal.Now.zonedDateTimeISO().toPlainDateTime().round("second").toLocaleString()
 
 async function create_named(
+  id_input: HTMLInputElement,
   prefix: string,
-  create: (name: string) => Promise<unknown>,
-  refresh?: () => Promise<unknown> | unknown
+  create: (id: string) => Promise<unknown>,
+  refresh?: () => Promise<unknown> | unknown,
+  on_created?: (id: string) => void
 ) {
-  const name = new_chat_input.innerText.trim() || randname(prefix)
+  const id = id_input.value.trim() || randname(prefix)
   try {
-    await create(name)
+    await create(id)
+    id_input.value = ""
     stat_c.innerText = "Created."
+    on_created?.(id)
     await refresh?.()
   } catch (e) {
     stat_c.innerText = (e as Error).message || String(e)
@@ -39,12 +41,21 @@ function create_button(
   label: string,
   prefix: string,
   create: (name: string) => Promise<unknown>,
-  refresh?: () => Promise<unknown> | unknown
+  refresh?: () => Promise<unknown> | unknown,
+  on_created?: (id: string) => void
 ) {
-  return t.button({
-    innerText: label,
-    onclick: () => create_named(prefix, create, refresh),
-  })
+  const id_input = t.input({
+    type: "text",
+    placeholder: "ID",
+  }) as HTMLInputElement
+  return t.group_c(
+    { className: "horizontal create-entry-control" },
+    id_input,
+    t.button({
+      innerText: label,
+      onclick: () => create_named(id_input, prefix, create, refresh, on_created),
+    })
+  )
 }
 
 async function save_action(action: () => Promise<unknown>) {
@@ -70,16 +81,31 @@ async function save_active_chat_cast() {
   const cast = await update_chat_cast(
     chat_id,
     TEMP.chat.speaker_id ?? null,
-    TEMP.chat.listener_id ?? null,
+    undefined,
     TEMP.involved_bubby_ids,
     TEMP.chat as Chat
   )
-  Object.assign(TEMP.chat, {
-    speaker_id: cast.speaker_id,
-    listener_id: cast.listener_id
-  })
+  Object.assign(TEMP.chat, { speaker_id: cast.speaker_id, listener_ids: cast.listener_ids })
   TEMP.involved_bubby_ids = cast.bubby_ids
   await refresh_chat_bubby_selects(TEMP.chat as Chat)
+}
+
+async function set_live_chat_listeners(listener_ids: string[]) {
+  const chat_id = TEMP.chat.id
+  if (!chat_id) return
+  try {
+    const cast = await update_chat_cast(chat_id, undefined, listener_ids, TEMP.involved_bubby_ids)
+    Object.assign(TEMP.chat, { speaker_id: cast.speaker_id, listener_ids: cast.listener_ids })
+    TEMP.involved_bubby_ids = cast.bubby_ids
+    await refresh_chat_bubby_selects(TEMP.chat as Chat)
+  } catch (e) {
+    stat_c.innerText = (e as Error).message || String(e)
+    const current = await get_entry("chats", chat_id)
+    if (current) {
+      Object.assign(TEMP.chat, current)
+      await refresh_chat_bubby_selects(current)
+    }
+  }
 }
 
 async function render_chat_editor() {
@@ -102,29 +128,24 @@ async function render_chat_editor() {
   edit_chat_c.replaceChildren(editor, editor_2)
 }
 
-async function set_live_chat_role(role: "speaker" | "listener", value: string) {
+async function set_live_chat_speaker(value: string) {
   const chat_id = TEMP.chat.id
   if (!chat_id) return
-  const previous = role === "speaker" ? TEMP.chat.speaker_id : TEMP.chat.listener_id
-  if (role === "speaker") TEMP.chat.speaker_id = value || null
-  else TEMP.chat.listener_id = value || null
+  const previous_speaker_id = TEMP.chat.speaker_id
+  TEMP.chat.speaker_id = value || null
 
   try {
     const cast = await update_chat_cast(
       chat_id,
-      role === "speaker" ? value || null : undefined,
-      role === "listener" ? value || null : undefined,
+      value || null,
+      undefined,
       TEMP.involved_bubby_ids
     )
-    Object.assign(TEMP.chat, {
-      speaker_id: cast.speaker_id,
-      listener_id: cast.listener_id
-    })
+    Object.assign(TEMP.chat, { speaker_id: cast.speaker_id, listener_ids: cast.listener_ids })
     TEMP.involved_bubby_ids = cast.bubby_ids
     await refresh_chat_bubby_selects(TEMP.chat as Chat)
   } catch (e) {
-    if (role === "speaker") TEMP.chat.speaker_id = previous ?? null
-    else TEMP.chat.listener_id = previous ?? null
+    TEMP.chat.speaker_id = previous_speaker_id ?? null
     stat_c.innerText = (e as Error).message || String(e)
     const current = await get_entry("chats", chat_id)
     if (current) {
@@ -136,18 +157,22 @@ async function set_live_chat_role(role: "speaker" | "listener", value: string) {
 
 const enter_chat = t.enter_chat(
   chat_list_c,
-  t.group_c(
-    { className: "horizontal" },
-    new_chat_input,
-    create_button("Create Chat", "Chat", async (name) => create_entry("chats", {
-      id: name,
-      name,
-      speaker_id: null,
-      listener_id: null,
-      created_at: Temporal.Now.instant().epochMilliseconds,
-      last_use_at: null,
-      llm_config_id: null,
-    }), async () => render_chat_list(await get_recent_entries("chats", 0, 10)))
+  create_button(
+    "Create Chat", 
+    "Chat", 
+    async (name) => create_entry(
+      "chats", 
+      {
+        id: name,
+        name,
+        speaker_id: null,
+        listener_ids: [],
+        created_at: Temporal.Now.instant().epochMilliseconds,
+        last_use_at: null,
+        llm_config_id: null,
+      }
+    ), 
+    async () => render_chat_list(await get_recent_entries("chats", 0, 10))
   ),
   stat_c
 ) as HTMLDivElement;
@@ -187,7 +212,7 @@ function timestamp_to_info(timestamp: number) {
 }
 
 async function render_chat_list (chats: Chat[]) {
-  await replace_list(chat_list_c, chats, async (chat) => {
+  await render_list(chat_list_c, chats, async (chat) => {
     const bubby_ids = await get_chat_bubby_ids(chat.id)
     return t.div(
       { 
@@ -201,6 +226,9 @@ async function render_chat_list (chats: Chat[]) {
       t.div({ innerText: `created: ${timestamp_to_info(chat.created_at).toLocaleString()}` }),
       t.div({ innerText: `last use: ${chat.last_use_at ? timestamp_to_info(chat.last_use_at).toLocaleString() : "never"}` })
     )
+  }, async (chat) => {
+    await delete_entry("chats", chat.id)
+    if (TEMP.chat.id === chat.id) TEMP.chat.id = undefined
   })
 }
 
@@ -221,35 +249,23 @@ const bubbies_c = t.bubbies_c(
 
 const llm_config_list_c = t.list_c()
 async function refresh_llm_config_list () {
-  await replace_list(llm_config_list_c, await get_recent_entries("llm_configs", 0, 10), c => t.div({
+  await render_list(llm_config_list_c, await get_recent_entries("llm_configs", 0, 10), c => t.div({
       innerText: c.name,
       onclick: () => {
         TEMP.edited_llm_config_id = c.id
         show_one_dom("LLM Config")
       }
-    }))
+    }), c => delete_entry("llm_configs", c.id))
 }
 const llm_configs_c = t.llm_configs(
   llm_config_list_c,
-  t.button({
-    innerText: "Prev",
-    onclick: async () => {
-      // WIP
-    }
-  }),
-  t.button({
-    innerText: "Next",
-    onclick: async () => {
-      // WIP
-    }
-  }),
-    create_button("Create LLM Config", "LLM Config", (name) => create_entry("llm_configs", {
-      id: name,
-      name,
-      api_key: "",
-      api_url: "https://openrouter.ai/api/v1/chat/completions",
-      params: instantiate(LlmParams),
-    }), refresh_llm_config_list)
+  create_button("Create LLM Config", "LLM Config", (name) => create_entry("llm_configs", {
+    id: name,
+    name,
+    api_key: "",
+    api_url: "https://openrouter.ai/api/v1/chat/completions",
+    params: instantiate(LlmParams),
+  }), refresh_llm_config_list)
 )
 
 async function render_bubby_list (bubbies: Bubby[]) {
@@ -294,7 +310,21 @@ async function render_bubby_config (bubby: Bubby) {
     ),
     obj_editor(Bubby, bubby, {
       async save(old_id) {
-        return save_action(() => update_entry("bubbies", old_id ?? bubby.id, bubby))
+        const previous_id = old_id ?? bubby.id
+        const next_id = bubby.id
+        return save_action(async () => {
+          const rollback_image_rename = await rename_asset(`${previous_id}.webp`, `${next_id}.webp`)
+          try {
+            await update_entry("bubbies", previous_id, bubby)
+          } catch (error) {
+            await rollback_image_rename()
+            throw error
+          }
+          TEMP.edited_bubby_id = next_id
+          await render_bubby_list(await get_recent_entries("bubbies", 0, 10))
+          const saved_bubby = await get_entry("bubbies", next_id)
+          if (saved_bubby) await render_bubby_config(saved_bubby)
+        })
       },
     })
   )
@@ -361,26 +391,13 @@ const in_chat_c = t.in_chat(
             className: "persona",
             onchange: (event: Event) => {
               const target = event.target as HTMLSelectElement;
-              void set_live_chat_role("speaker", target.value)
+              void set_live_chat_speaker(target.value)
             },
           },
           t.option({ value: "", innerText: "Speaker" })
         )
       ),
-      t.div(
-        { className: "select" },
-        t.img({ src: "icons/face.svg" }),
-        t.select(
-          {
-            className: "target_char",
-            onchange: (event: Event) => {
-              const target = event.target as HTMLSelectElement;
-              void set_live_chat_role("listener", target.value)
-            },
-          },
-          t.option({ value: "", innerText: "Listener" })
-        )
-      ),
+      multi_select_picker("chat-listeners", "Listeners", [], [], set_live_chat_listeners),
       t.group_c({ className: "horizontal" },
         t.button({ innerText: "Library" }, t.img({ src: "./icons/library.svg" })),
         t.button(
@@ -438,36 +455,28 @@ t.div(`Currently, using OpenRouter is what this app is oriented for.
 Setting other specific API URL in your LLM config is possible.
 However, if the API of the provider significantly differs from OpenRouter's or OpenAI's, the app may not work as intended.`)
 ),
-t.button({
-  innerText: "Create your first bubby.",
-  onclick: () => {
-    create_entry("bubbies", {
-      name: "New Bubby",
+  create_button("Create your first bubby.", "New Bubby", (id) => create_entry("bubbies", {
+      id,
+      name: id,
       desc: "",
       first_message: null,
       llm_config_id: null
-    }).finally(() => {
-      TEMP.edited_bubby_id = "New Bubby"
+    }), undefined, (id) => {
+      TEMP.edited_bubby_id = id
       show_one_dom("Edit Bubby")
-    })
-  },
-}),
+    }),
 t.div(`Or talk to our sample bubbies.`),
 
-t.button({
-  innerText: "Create your persona.",
-  onclick: () => {
-    create_entry("bubbies", {
-      name: "New Bubby (Your Persona)",
+create_button("Create your persona.", "New Bubby (Your Persona)", (id) => create_entry("bubbies", {
+      id,
+      name: id,
       desc: "",
       first_message: null,
       llm_config_id: null
-    }).finally(() => {
-      TEMP.edited_bubby_id = "New Bubby (Your Persona)"
+    }), undefined, (id) => {
+      TEMP.edited_bubby_id = id
       show_one_dom("Edit Bubby")
-    })
-  },
-}),
+    }),
 t.div(`Or go anonymous.`),
 
 t.button({
@@ -492,8 +501,8 @@ While this very app stores all personal data in your device only, the LLM API pr
 
 export function show_one_dom (title: keyof typeof nav) {
   const doms = Object.values(nav)
-  doms.forEach(d => d.style.visibility = "collapse")
-  nav[title].style.visibility = "visible"
+  doms.forEach(d => d.style.display = "none")
+  nav[title].style.display = "flex"
   if (refresh[title]) refresh[title]()
 }
 

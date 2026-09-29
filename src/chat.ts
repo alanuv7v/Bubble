@@ -51,8 +51,8 @@ export async function query<K extends TableName>(
 
 const json_keys = {
   bubbies: [],
-  messages: [],
-  chats: [],
+  messages: ['speaker_ids'],
+  chats: ['listener_ids'],
   llm_configs: ['params'],
   textgens: [],
   prompts: ['trigger_words'],
@@ -111,7 +111,7 @@ export async function get_recent_messages(
       OFFSET ?`,
     [chat_id, end - start, start]
   )) as unknown as Message[]
-  return res.toReversed()
+  return res.map((message) => normalize_message_speakers(message as Message)).toReversed()
 }
 
 export async function get_messages_before(
@@ -126,7 +126,7 @@ export async function get_messages_before(
       LIMIT ?`,
     [chat_id, last_created_at, limit]
   ) as unknown as Message[]
-  return res.toReversed()
+  return res.map((message) => normalize_message_speakers(message as Message)).toReversed()
 }
 
 async function get_messages_before_message(message: Message, limit = 50) {
@@ -141,7 +141,23 @@ async function get_messages_before_message(message: Message, limit = 50) {
       LIMIT ?`,
     [message.chat_id, message.id, message.id, message.id, limit]
   ) as unknown as Message[]
-  return res.toReversed()
+  return res.map((message) => normalize_message_speakers(message as Message)).toReversed()
+}
+
+function normalize_id_list(value: unknown, fallback?: Id): Id[] {
+  let ids: unknown = value
+  if (typeof ids === "string") {
+    try { ids = JSON.parse(ids) } catch { ids = [] }
+  }
+  if (!Array.isArray(ids)) ids = []
+  const normalized = [...new Set((ids as unknown[]).filter((id): id is Id => typeof id === "string" && id.length > 0))]
+  if (!normalized.length && fallback) normalized.push(fallback)
+  return normalized
+}
+
+function normalize_message_speakers(message: Message): Message {
+  message.speaker_ids = normalize_id_list(message.speaker_ids, message.speaker_id)
+  return message
 }
 
 export async function get_entry<K extends TableName>(table: K, id: Id) {
@@ -211,7 +227,7 @@ export async function create_entries<K extends TableName>(
 }
 
 export async function get_chat_bubby_ids(chat_id: Id) {
-  const sql = `SELECT bubby_id FROM chat_bubbies WHERE chat_id = ?;`
+  const sql = `SELECT bubby_id FROM chat_bubbies WHERE chat_id = ? ORDER BY bubby_id;`
   return (await exec_sql(sql, [chat_id], "array")).flat() as unknown as Id[]
 }
 
@@ -224,7 +240,8 @@ export async function get_chat_bubbies(chat_id: Id) {
   const sql = `SELECT b.*
 FROM bubbies b
 INNER JOIN chat_bubbies cb ON b.id = cb.bubby_id
-WHERE cb.chat_id = ?;`
+WHERE cb.chat_id = ?
+ORDER BY b.name COLLATE NOCASE, b.id;`
   return (await exec_sql(sql, [chat_id])) as unknown as Bubby[]
 }
 
@@ -233,17 +250,16 @@ export async function refresh_chat_bubby_selects(chat: Chat) {
   TEMP.involved_bubby_ids = bubbies.map((bubby) => bubby.id)
 
   const speaker_select = q("select.persona") as HTMLSelectElement
-  const listener_select = q("select.target_char") as HTMLSelectElement
   speaker_select.replaceChildren(
     speaker_select.firstElementChild!,
     ...bubbies.map((bubby) => t.option(bubby.id))
   )
-  listener_select.replaceChildren(
-    listener_select.firstElementChild!,
-    ...bubbies.map((bubby) => t.option(bubby.id))
-  )
   speaker_select.value = chat.speaker_id ?? ""
-  listener_select.value = chat.listener_id ?? ""
+  const listener_picker = q("#chat-listeners") as HTMLElement & { setOptions?: (options: { value: Id, label: string }[], selected: Id[]) => void }
+  listener_picker?.setOptions?.(
+    bubbies.filter((bubby) => bubby.id !== chat.speaker_id).map((bubby) => ({ value: bubby.id, label: bubby.name || bubby.id })),
+    normalize_id_list(chat.listener_ids).filter((id) => id !== chat.speaker_id)
+  )
   return TEMP.involved_bubby_ids
 }
 
@@ -257,7 +273,7 @@ WHERE cb.bubby_id = ?;`
 
 export type ChatCastState = {
   speaker_id: Id | null
-  listener_id: Id | null
+  listener_ids: Id[]
   bubby_ids: Id[]
 }
 
@@ -266,7 +282,7 @@ let chat_cast_write_queue: Promise<unknown> = Promise.resolve()
 export function update_chat_cast(
   chat_id: Id,
   speaker_id: Id | null | undefined,
-  listener_id: Id | null | undefined,
+  listener_ids: Id[] | undefined,
   req_bubby_ids: Id[],
   chat_patch?: Partial<Chat>
 ): Promise<ChatCastState> {
@@ -276,20 +292,20 @@ export function update_chat_cast(
 
     const bubby_ids = [...new Set(req_bubby_ids.filter(Boolean))]
     let next_speaker_id = speaker_id === undefined ? chat.speaker_id : speaker_id || null
-    let next_listener_id = listener_id === undefined ? chat.listener_id : listener_id || null
+    let next_listener_ids = listener_ids === undefined ? normalize_id_list(chat.listener_ids) : [...new Set(listener_ids.filter(Boolean))]
 
     if (next_speaker_id && next_speaker_id === chat.speaker_id && !bubby_ids.includes(next_speaker_id)) {
       next_speaker_id = null
     } else if (next_speaker_id && !bubby_ids.includes(next_speaker_id)) {
       bubby_ids.push(next_speaker_id)
     }
-    if (next_listener_id && next_listener_id === chat.listener_id && !bubby_ids.includes(next_listener_id)) {
-      next_listener_id = null
-    } else if (next_listener_id && !bubby_ids.includes(next_listener_id)) {
-      bubby_ids.push(next_listener_id)
-    }
-
     const normalized_bubby_ids = [...new Set(bubby_ids)]
+    if (listener_ids !== undefined) {
+      for (const id of next_listener_ids) if (!normalized_bubby_ids.includes(id)) normalized_bubby_ids.push(id)
+    } else {
+      next_listener_ids = next_listener_ids.filter((id) => normalized_bubby_ids.includes(id))
+    }
+    next_listener_ids = next_listener_ids.filter((id) => id !== next_speaker_id && normalized_bubby_ids.includes(id))
     await exec_sql("BEGIN TRANSACTION")
     try {
       if (normalized_bubby_ids.length) {
@@ -313,13 +329,13 @@ export function update_chat_cast(
       await update_entry("chats", chat_id, {
         ...chat_fields,
         speaker_id: next_speaker_id,
-        listener_id: next_listener_id
+        listener_ids: next_listener_ids
       })
       await exec_sql("COMMIT")
 
       return {
         speaker_id: next_speaker_id,
-        listener_id: next_listener_id,
+        listener_ids: next_listener_ids,
         bubby_ids: normalized_bubby_ids
       }
     } catch (e) {
@@ -412,6 +428,7 @@ export function text_gen_abort() {
 type TextGenContext = {
   speaker: Bubby,
   listener: Bubby,
+  listeners: Bubby[],
   chat: Chat,
 }
 
@@ -433,6 +450,32 @@ function resolve_ctx_path(obj: Record<string, any>, path: string[]) {
   if (typeof curr === "string") return curr
   if (typeof curr === "object" && curr !== null) return curr.id ?? ""
   return ""
+}
+
+function resolve_multi_listener_property(listeners: Bubby[], property_path: string[]) {
+  const entries = listeners.map((listener) => ({
+    name: listener.name || listener.id,
+    value: resolve_ctx_path(listener, property_path).trim()
+  })).filter((entry) => entry.value.length > 0)
+
+  if (entries.length < 2) return entries[0]?.value ?? ""
+
+  const is_long = entries.some((entry) =>
+    entry.value.length > 100 || /[\r\n]/.test(entry.value)
+  )
+  if (!is_long) {
+    const values = entries.map((entry) => entry.value)
+    if (values.length === 2) return `${values[0]} and ${values[1]}`
+    return `${values.slice(0, -1).join(", ")}, and ${values.at(-1)}`
+  }
+
+  const blocks = entries.map((entry) => `${entry.name}:\n${entry.value}`)
+  const longest_backtick_run = Math.max(
+    0,
+    ...blocks.flatMap((block) => block.match(/`+/g) ?? []).map((run) => run.length)
+  )
+  const fence = "`".repeat(Math.max(3, longest_backtick_run + 1))
+  return blocks.map((block) => `${fence}text\n${block}\n${fence}`).join("\n\n")
 }
 
 const keywords_replacers: Record<
@@ -481,6 +524,7 @@ async function replace_vars_from_text(
     ...ctx,
     char: ctx.listener,
     user: ctx.speaker,
+    listeners: ctx.listeners,
   }
 
   const resolved = await Promise.all(
@@ -496,6 +540,9 @@ async function replace_vars_from_text(
           console.log(e)
           return [tag, ""]
         }
+      }
+      if (root === "char" && path.length > 1 && ctx.listeners.length > 1) {
+        return [tag, resolve_multi_listener_property(ctx.listeners, path.slice(1))]
       }
       const val = resolve_ctx_path(ctx_alias, path)
       return [tag, val]
@@ -532,8 +579,11 @@ export async function gen_text_req (
     : await get_recent_messages(TEMP.chat.id!, 0, max_input_messages)
 
   const label_speakers = (await get_chat_bubby_ids(ctx.chat.id)).length > 2
-  const speakers = label_speakers
-    ? await get_entries("bubbies", [...new Set(raw_history.map((message) => message.speaker_id))])
+  const history_needs_speaker_names = label_speakers || raw_history.some((message) =>
+    normalize_message_speakers(message).speaker_ids.length > 1
+  )
+  const speakers = history_needs_speaker_names
+    ? await get_entries("bubbies", [...new Set(raw_history.flatMap((message) => normalize_message_speakers(message).speaker_ids))])
     : []
   const speaker_names = new Map<Id, string>(
     speakers.map((speaker): [Id, string] => [speaker.id, speaker.name])
@@ -552,10 +602,14 @@ export async function gen_text_req (
         content = picked?.content ?? h.content ?? ""
       }
 
-      if (label_speakers) {
-        const speaker_name = (speaker_names.get(h.speaker_id) ?? h.speaker_id)
-          .replace(/[\r\n\[\]]/g, " ")
-        content = `[${speaker_name}]: ${content}`
+      const leading_label = /^\s*\[([^\]\r\n]+)\]\s*:/.exec(content)?.[1]?.trim().toLocaleLowerCase()
+      const already_labeled = h.role === "assistant" && leading_label !== undefined &&
+        h.speaker_ids.some((id) => [id, speaker_names.get(id)]
+          .some((name) => name?.toLocaleLowerCase() === leading_label))
+      if ((label_speakers || h.speaker_ids.length > 1) && !already_labeled) {
+        const display_names = h.speaker_ids.map((id) => (speaker_names.get(id) ?? id)
+          .replace(/[\r\n\[\]]/g, " "))
+        content = `[${display_names.join(" & ")}]: ${content}`
       }
       return {
         role: h.role,
@@ -568,8 +622,9 @@ export async function gen_text_req (
   const chat_llm_config: Partial<LlmConfig> = TEMP.chat.llm_config_id ?
     (await get_entry("llm_configs", TEMP.chat.llm_config_id)) ?? {}
     : {}
-  const bubby_llm_config: Partial<LlmConfig> = ctx.listener.llm_config_id ?
-    (await get_entry("llm_configs", ctx.listener.llm_config_id)) ?? {}
+  const primary_listener = ctx.listeners[0] ?? ctx.listener
+  const bubby_llm_config: Partial<LlmConfig> = primary_listener.llm_config_id ?
+    (await get_entry("llm_configs", primary_listener.llm_config_id)) ?? {}
     : {}
   
   // prepare the llm_config
@@ -593,8 +648,15 @@ export async function gen_text_req (
     bubby_llm_config.api_url ?? 
     "https://openrouter.ai/api/v1/chat/completions"
   
+  const char_desc_is_in_template = merged_config.messages.some((message) =>
+    /\{\{\s*char\.desc\s*\}\}/.test(message.content)
+  )
+  const participant_prompt: CoreMessage[] = ctx.listeners.length > 1 ? [{
+    role: "system",
+    content: `The following characters are all participating in this response. Include a distinct reaction from each one and label each part with that character's name. Keep their voices consistent with their descriptions.${char_desc_is_in_template ? "" : `\n\n${ctx.listeners.map((listener) => `# ${listener.name}\n${listener.desc}`).join("\n\n")}`}`
+  }] : []
   const all_msgs = await replace_all_content_variables(
-    ctx, [...merged_config.messages, ...core_history]
+    ctx, [...merged_config.messages, ...participant_prompt, ...core_history]
   );
 
   return {
@@ -629,6 +691,14 @@ async function delete_message(ctrl: MessageController) {
 }
 
 async function message_controller (bubby: Bubby, chat: Chat, message: Message, textgens: TextGen[]) {
+  normalize_message_speakers(message)
+  const speaker_entries = await get_entries("bubbies", message.speaker_ids)
+  const speakers = message.speaker_ids
+    .map((id) => speaker_entries.find((speaker) => speaker.id === id))
+    .filter((speaker): speaker is Bubby => Boolean(speaker))
+  const display_name = message.speaker_ids.map((id) =>
+    speakers.find((speaker) => speaker.id === id)?.name ?? id
+  ).join(" & ") || bubby.name
 
   const picked_content = (message.role === "user" && message.content !== null) ?
   message.content
@@ -645,7 +715,7 @@ async function message_controller (bubby: Bubby, chat: Chat, message: Message, t
     }),
     t.h3({
       className: "name",
-      innerText: bubby.name
+      innerText: display_name
     }),
     content_c
   )
@@ -655,7 +725,6 @@ async function message_controller (bubby: Bubby, chat: Chat, message: Message, t
     className: "delete-message",
     title: "Delete message"
   })
-  delete_button.setAttribute("aria-label", "Delete message")
   const generation_label = t.span({ className: "generation-index" }) as HTMLButtonElement
   const previous_button = t.button({
     type: "button",
@@ -682,6 +751,7 @@ async function message_controller (bubby: Bubby, chat: Chat, message: Message, t
 
   const controller = {
     bubby,
+    speakers: speakers.length ? speakers : [bubby],
     chat,
     message,
     textgens,
@@ -751,6 +821,25 @@ const format_chunk = (str: string) => pipe(str, (s) =>
   s.replaceAll("\\n", "<br>").replaceAll(`\\"`, `"`)
 );
 
+function strip_leading_speaker_label(content: string, speakers: Bubby[]) {
+  const match = /^\s*\[([^\]\r\n]+)\]\s*:\s*/.exec(content)
+  if (!match) return content
+
+  // In a group reply, labels identify individual reactions. Only remove a
+  // redundant label for the whole group; preserve labels for each speaker.
+  if (speakers.length > 1) {
+    const group_labels = [
+      speakers.map((speaker) => speaker.name).join(" & "),
+      speakers.map((speaker) => speaker.id).join(" & "),
+      speakers.map((speaker) => speaker.name).join(", "),
+      speakers.map((speaker) => speaker.id).join(", ")
+    ]
+    if (!group_labels.includes(match[1].trim())) return content
+  }
+
+  return content.slice(match[0].length)
+}
+
 export async function stream_and_show_text_gen(
   stream: boolean,
   response: Response,
@@ -776,7 +865,10 @@ export async function stream_and_show_text_gen(
   }
 
   if (!stream) {
-    const text = initial_text + await llm.no_stream_parse(response);
+    const text = strip_leading_speaker_label(
+      initial_text + await llm.no_stream_parse(response),
+      ctrl.speakers
+    );
     if (persist_message) ctrl.message.content = text
     ctrl.content_c.innerHTML = await format_content(text)
     if (persist_message) await update_entry("messages", ctrl.message.id, { content: text })
@@ -798,7 +890,8 @@ export async function stream_and_show_text_gen(
       await update_entry("messages", ctrl.message.id, { content: full_text })
     }
   });
-  const full_text = initial_text + buffer
+  const full_text = strip_leading_speaker_label(initial_text + buffer, ctrl.speakers)
+  ctrl.content_c.innerHTML = await format_content(full_text)
   if (persist_message) {
     ctrl.message.content = full_text
     await update_entry("messages", ctrl.message.id, { content: full_text })
@@ -830,6 +923,7 @@ async function gen_message (
     req = await gen_text_req({
       speaker: speaker,
       listener: ctrl.bubby,
+      listeners: ctrl.speakers,
       chat: TEMP.chat as Chat
     }, TEMP.user_config.chat.max_input_messages ?? 50,
     alternative ? ctrl.message : undefined)
@@ -846,7 +940,10 @@ async function gen_message (
       ? "Generation cancelled."
       : `Generation failed: ${(e as Error).message ?? String(e)}`
     if (!alternative && ctrl.message.content !== null) {
-      await update_entry("messages", ctrl.message.id, { content: ctrl.message.content })
+      const partial_text = strip_leading_speaker_label(ctrl.message.content, ctrl.speakers)
+      ctrl.message.content = partial_text
+      await update_entry("messages", ctrl.message.id, { content: partial_text })
+      ctrl.content_c.innerHTML = await format_displayed_msg(partial_text)
     }
     ctrl.content_c.append(t.error_c({ innerText: message }))
     ctrl.elem.classList.add("error")
@@ -899,7 +996,7 @@ export async function resume_last_reply() {
   if (generations.length > 0) return false
 
   const original_speaker = await get_entry("bubbies", message.listener_id)
-  const reply_character = await get_entry("bubbies", message.speaker_id)
+  const reply_character = await get_entry("bubbies", normalize_message_speakers(message).speaker_ids[0])
   if (!original_speaker || !reply_character) return false
 
   const controller = message_controllers.get(message.id) ?? await message_controller(
@@ -923,26 +1020,28 @@ export async function send() {
   const msg_list = q("interactions-c")!;
 
   // GET CHAT AND CHARACTERS
-  const listener_id = TEMP.chat.listener_id;
   const speaker_id = TEMP.chat.speaker_id;
 
-  if (!listener_id) {
-    throw Error(`listener is not specified`);
-  }
   if (!speaker_id) {
     throw Error(`Speaker is not specified`);
   }
+  const listener_ids = normalize_id_list(TEMP.chat.listener_ids).filter((id) => id !== speaker_id)
+  const listener_rows = await get_entries("bubbies", listener_ids)
+  const listeners = listener_ids.map((id) => listener_rows.find((bubby) => bubby.id === id)).filter((bubby): bubby is Bubby => !!bubby)
+  if (!listeners.length) throw Error("Add at least one Bubby besides the speaker to this chat.")
 
   // Empty prompts request an assistant continuation without adding a user turn.
   const prompt = prompt_c.innerText as string;
   const has_prompt = prompt.trim().length > 0
+  const primary_listener_id = listener_ids[0]
   const saved_user_msg: Message | null = has_prompt ? {
     role: "user",
     content: prompt,
     chat_id: TEMP.chat.id!,
     id: crypto.randomUUID(),
     speaker_id,
-    listener_id,
+    speaker_ids: [speaker_id],
+    listener_id: primary_listener_id,
     created_at: Temporal.Now.instant().epochMilliseconds,
     picked: 0,
   } : null
@@ -952,16 +1051,15 @@ export async function send() {
     content: null,
     chat_id: TEMP.chat.id!,
     id: crypto.randomUUID(),
-    speaker_id: listener_id,
+    speaker_id: primary_listener_id,
+    speaker_ids: listener_ids,
     listener_id: speaker_id,
     created_at: Temporal.Now.instant().epochMilliseconds,
     picked: 0,
   }
 
   const speaker = await get_entry("bubbies", speaker_id)
-  const listener = await get_entry("bubbies", listener_id)
   if (!speaker) throw Error(`Speaker with ID ${speaker_id} does not exist`)
-  if (!listener) throw Error(`Listener with ID ${listener_id} does not exist`)
   
   if (saved_user_msg) await create_entry("messages", saved_user_msg)
 
@@ -970,7 +1068,7 @@ export async function send() {
   
   const chat = TEMP.chat as Chat
 
-  const llm_msg_ctrl = await message_controller(listener, chat, saved_llm_msg, [])
+  const llm_msg_ctrl = await message_controller(listeners[0], chat, saved_llm_msg, [])
 
   // Append the user turn only when the prompt contains text.
   if (saved_user_msg) {
@@ -991,6 +1089,8 @@ export async function send() {
 export async function load_chat(chat: Chat) {
   
   TEMP.chat = merge(TEMP.chat, chat)
+  const cast = await sync_chat_bubbies(chat.id, await get_chat_bubby_ids(chat.id))
+  Object.assign(TEMP.chat, { speaker_id: cast.speaker_id, listener_ids: cast.listener_ids })
   /* 
     OPEN CHAT
   */
@@ -999,8 +1099,8 @@ export async function load_chat(chat: Chat) {
 
   /* SHOW MESSAGES */
   const history = await get_recent_messages(chat.id, 0, 20)
-  const chat_speaker = chat.speaker_id ? await get_entry("bubbies", chat.speaker_id) : null
-  const chat_listener = chat.listener_id ? await get_entry("bubbies", chat.listener_id) : null
+  const chat_speaker = TEMP.chat.speaker_id ? await get_entry("bubbies", TEMP.chat.speaker_id) : null
+  const chat_listener = TEMP.chat.listener_ids[0] ? await get_entry("bubbies", TEMP.chat.listener_ids[0]) : null
 
   // Repair messages saved with the visible dropdown placeholder labels as IDs.
   if (chat_speaker && chat_listener) {
@@ -1008,10 +1108,11 @@ export async function load_chat(chat: Chat) {
       const has_placeholder_id = [message.speaker_id, message.listener_id]
         .some((id) => id === "Speaker" || id === "Listener")
       if (!has_placeholder_id) continue
-      const speaker_id = message.role === "user" ? chat.speaker_id! : chat.listener_id!
-      const listener_id = message.role === "user" ? chat.listener_id! : chat.speaker_id!
-      await update_entry("messages", message.id, { speaker_id, listener_id })
+      const speaker_id = message.role === "user" ? TEMP.chat.speaker_id! : chat_listener.id
+      const listener_id = message.role === "user" ? chat_listener.id : TEMP.chat.speaker_id!
+      await update_entry("messages", message.id, { speaker_id, speaker_ids: [speaker_id], listener_id })
       message.speaker_id = speaker_id
+      message.speaker_ids = [speaker_id]
       message.listener_id = listener_id
     }
   }

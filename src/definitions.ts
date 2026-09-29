@@ -171,6 +171,7 @@ export type Message = Omit<CoreMessage, "content"> & {
   content: string|null // null if role === "assistant"
   chat_id: Id
   speaker_id: Id
+  speaker_ids: Id[]
   listener_id: Id
   created_at: number // UNIX timestamp
   picked: number
@@ -416,13 +417,9 @@ export const Chat = {
     },
     nullable: true
   },
-  listener_id: {
-    __type: "str_in_dynamic",
-    async among () {
-      const all = (await exec_sql("SELECT id FROM bubbies", [], "array")).flat()
-      return all as unknown as string[]
-    },
-    nullable: true
+  listener_ids: {
+    __type: "array",
+    allows: "string"
   },
   last_use_at: {
     __type: "datetime",
@@ -444,7 +441,7 @@ export type Chat = {
   //bubby_ids: Id[]
   //library_ids: Id[]
   speaker_id: string | null
-  listener_id: string | null
+  listener_ids: Id[]
   last_use_at: number | null // UNIX ms timestamps
   created_at: number
 }

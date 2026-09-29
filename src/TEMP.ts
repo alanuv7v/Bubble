@@ -15,7 +15,7 @@ const TEMP = {
     bubby_ids: [],
     library_ids: [],
     speaker_id: undefined,
-    listener_id: undefined,
+    listener_ids: [],
     last_use_at: undefined,
     llm_config_id: undefined,
   } as Partial<Chat>,

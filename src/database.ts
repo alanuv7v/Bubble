@@ -33,12 +33,11 @@ CREATE TABLE IF NOT EXISTS chats (
   --bubby_ids TEXT NOT NULL DEFAULT '[]',
   --library_ids TEXT NOT NULL DEFAULT '[]',
   speaker_id TEXT DEFAULT NULL,
-  listener_id TEXT DEFAULT NULL,
+  listener_ids TEXT NOT NULL DEFAULT '[]',
   created_at INTEGER NOT NULL,
   last_use_at INTEGER DEFAULT NULL,
   llm_config_id TEXT DEFAULT NULL,
   FOREIGN KEY(speaker_id) REFERENCES bubbies(id) ON DELETE SET NULL,
-  FOREIGN KEY(listener_id) REFERENCES bubbies(id) ON DELETE SET NULL,
   FOREIGN KEY(llm_config_id) REFERENCES llm_configs(id) ON DELETE SET NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_chats_name ON chats(name);
@@ -49,6 +48,7 @@ CREATE TABLE IF NOT EXISTS messages (
   content TEXT DEFAULT NULL,
   chat_id TEXT NOT NULL,
   speaker_id TEXT NOT NULL,
+  speaker_ids TEXT NOT NULL DEFAULT '[]',
   listener_id TEXT NOT NULL,
   created_at INTEGER NOT NULL,
   picked INTEGER NOT NULL DEFAULT 0,
@@ -95,9 +95,6 @@ CREATE INDEX IF NOT EXISTS idx_bubby_chats ON chat_bubbies(bubby_id, chat_id);
 
 INSERT OR IGNORE INTO chat_bubbies (chat_id, bubby_id)
   SELECT id, speaker_id FROM chats WHERE speaker_id IS NOT NULL;
-INSERT OR IGNORE INTO chat_bubbies (chat_id, bubby_id)
-  SELECT id, listener_id FROM chats WHERE listener_id IS NOT NULL;
-
 CREATE TABLE IF NOT EXISTS chat_libraries (
   chat_id TEXT NOT NULL,
   library_id TEXT NOT NULL,
@@ -146,6 +143,67 @@ export async function init() {
   }
 
   await exec_sql(init_sql)
+
+  // Add JSON-backed group cast columns to databases created by older versions.
+  const ensure_column = async (table: string, column: string, definition: string) => {
+    const columns = await exec_sql<{ name: string }>(`PRAGMA table_info(${table})`)
+    if (!columns.some((entry) => entry.name === column)) {
+      await exec_sql(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
+    }
+  }
+  await ensure_column("chats", "listener_ids", "TEXT NOT NULL DEFAULT '[]'")
+  await ensure_column("messages", "speaker_ids", "TEXT NOT NULL DEFAULT '[]'")
+
+  const chat_columns = await exec_sql<{ name: string }>("PRAGMA table_info(chats)")
+  const has_legacy_listener_id = chat_columns.some((entry) => entry.name === "listener_id")
+  const chats_to_migrate = await exec_sql<{ id: string, listener_id: string | null, listener_ids: string }>(
+    `SELECT id, ${has_legacy_listener_id ? "listener_id" : "NULL AS listener_id"}, listener_ids FROM chats`
+  )
+  for (const chat of chats_to_migrate) {
+    let listener_ids: string[] = []
+    try { listener_ids = JSON.parse(chat.listener_ids || "[]") } catch { listener_ids = [] }
+    if (!listener_ids.length && chat.listener_id) listener_ids = [chat.listener_id]
+    listener_ids = [...new Set(listener_ids.filter((id) => typeof id === "string" && id.length > 0))]
+    if (chat.listener_id && !listener_ids.includes(chat.listener_id)) listener_ids.push(chat.listener_id)
+    await exec_sql("UPDATE chats SET listener_ids = ? WHERE id = ?", [JSON.stringify(listener_ids), chat.id])
+    for (const bubby_id of listener_ids) {
+      await exec_sql("INSERT OR IGNORE INTO chat_bubbies (chat_id, bubby_id) SELECT ?, id FROM bubbies WHERE id = ?", [chat.id, bubby_id])
+    }
+  }
+  if (has_legacy_listener_id) {
+    await exec_sql("PRAGMA foreign_keys = OFF")
+    await exec_sql("BEGIN TRANSACTION")
+    try {
+      await exec_sql(`CREATE TABLE chats_new (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE DEFAULT 'New Chat',
+        speaker_id TEXT DEFAULT NULL,
+        listener_ids TEXT NOT NULL DEFAULT '[]',
+        created_at INTEGER NOT NULL,
+        last_use_at INTEGER DEFAULT NULL,
+        llm_config_id TEXT DEFAULT NULL,
+        FOREIGN KEY(speaker_id) REFERENCES bubbies(id) ON DELETE SET NULL,
+        FOREIGN KEY(llm_config_id) REFERENCES llm_configs(id) ON DELETE SET NULL
+      )`)
+      await exec_sql(`INSERT INTO chats_new (id, name, speaker_id, listener_ids, created_at, last_use_at, llm_config_id)
+        SELECT id, name, speaker_id, listener_ids, created_at, last_use_at, llm_config_id FROM chats`)
+      await exec_sql("DROP TABLE chats")
+      await exec_sql("ALTER TABLE chats_new RENAME TO chats")
+      await exec_sql("CREATE UNIQUE INDEX IF NOT EXISTS idx_chats_name ON chats(name)")
+      await exec_sql("COMMIT")
+    } catch (e) {
+      await exec_sql("ROLLBACK").catch(() => {})
+      throw e
+    } finally {
+      await exec_sql("PRAGMA foreign_keys = ON")
+    }
+  }
+  const messages_to_migrate = await exec_sql<{ id: string, speaker_id: string, speaker_ids: string }>(
+    "SELECT id, speaker_id, speaker_ids FROM messages WHERE speaker_id IS NOT NULL AND speaker_ids = '[]'"
+  )
+  for (const message of messages_to_migrate) {
+    await exec_sql("UPDATE messages SET speaker_ids = ? WHERE id = ?", [JSON.stringify([message.speaker_id]), message.id])
+  }
 
   TEMP.opfs_root_handle = await navigator.storage.getDirectory()
   TEMP.user_config_handle = await TEMP.opfs_root_handle.getFileHandle("user_config.yaml", { create: true })

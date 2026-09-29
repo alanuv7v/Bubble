@@ -97,7 +97,7 @@ try {
       id: "First Chat",
       name: "First Chat",
       speaker_id: "Ethan",
-      listener_id: "Angelica",
+      listener_ids: ["Angelica"],
       created_at: Temporal.Now.instant().epochMilliseconds,
       last_use_at: null,
       llm_config_id: "Roleplay"
