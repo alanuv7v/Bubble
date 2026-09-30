@@ -50,10 +50,12 @@ try {
   if (TEMP.backbone === "OPFS") {
     was_ever_initialized = localStorage.getItem("v")
   }
+
+  // The worker and asset handle are per-page state; only default-data seeding is one-time.
+  await db.init()
+
   if (was_ever_initialized !== "1") {
-    
-    await db.init()
-  
+
     await create_entry("bubbies", {
       id: "Ethan",
       name: "Ethan",

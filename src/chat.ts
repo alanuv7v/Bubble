@@ -1,5 +1,5 @@
 import TEMP from "./TEMP";
-import { Bubby, Chat, GeneralRequestTemplate, TextGen as TextGen, Id, CoreMessage as CoreMessage, Prompt, LlmParams, Message, LlmConfig, instantiate } from "./definitions";
+import { Bubby, Chat, GeneralRequestTemplate, TextGen, Id, CoreMessage, Prompt, LlmParams, Message, LlmConfig, instantiate } from "./definitions";
 import { q } from "./utils/gui";
 import t from "./tags";
 import * as llm from "./llm";
@@ -7,7 +7,6 @@ import { pipe } from "./utils/pipe";
 import format_displayed_msg from "./utils/format_displayed_msg";
 import { AsEntry, exec_sql } from "./database";
 import { merge } from "merge-anything"
-import obj_path from "./utils/obj_path";
 import { get_img_src } from "./assets";
 import confirm_btn from "./ui_components/confirm_btn";
 
@@ -29,7 +28,7 @@ type JunctionEntryMap = {
   library_prompts: { library_id: Id, prompt_id: Id }
 }
 
-const JunctionColumns = {
+const junction_columns = {
   chat_bubbies: ["chat_id", "bubby_id"],
   chat_libraries: ["chat_id", "library_id"],
   library_prompts: ["library_id", "prompt_id"],
@@ -49,7 +48,7 @@ export async function query<K extends TableName>(
   return parse_entries(type, rows)
 }
 
-const json_keys = {
+const json_columns = {
   bubbies: [],
   messages: ['speaker_ids'],
   chats: ['listener_ids'],
@@ -64,35 +63,31 @@ export function parse_entry<K extends TableName>(
   row: AsEntry<TableEntryMap[K]> | null
 ): TableEntryMap[K] | null {
   if (row === null) return null
-  const res = { ...row }
-  const keys = json_keys[table]
-  for (let i = 0; i < keys.length; i++) {
-    const k = keys[i]
-    res[k] = safe_parse(res[k])
+  const entry = { ...row }
+  for (const column of json_columns[table]) {
+    entry[column] = safe_parse(entry[column])
   }
-  return res as TableEntryMap[K]
+  return entry as TableEntryMap[K]
 }
 
 export function parse_entries<K extends TableName>(
   table: K, 
   rows: AsEntry<TableEntryMap[K]>[]
 ): TableEntryMap[K][] {
-  return rows.map((r) => parse_entry(table, r)!)
+  return rows.map((row) => parse_entry(table, row)!)
 }
 
 export function stringify_entry<K extends TableName>(
   table: K, 
   item: Record<string, any>
 ): Record<string, any> {
-  const res = { ...item }
-  const keys = json_keys[table]
-  for (let i = 0; i < keys.length; i++) {
-    const k = keys[i]
-    if (res[k] != null && typeof res[k] !== 'string') {
-      res[k] = safe_stringify(res[k])
+  const entry = { ...item }
+  for (const column of json_columns[table]) {
+    if (entry[column] != null && typeof entry[column] !== 'string') {
+      entry[column] = safe_stringify(entry[column])
     }
   }
-  return res
+  return entry
 }
 
 
@@ -104,7 +99,7 @@ export async function get_recent_messages(
   start: number,
   end: number
 ) {
-  const res = await (exec_sql(
+  const messages = await (exec_sql(
     `SELECT * FROM messages 
       WHERE chat_id = ? 
       ORDER BY created_at DESC, rowid DESC
@@ -112,7 +107,7 @@ export async function get_recent_messages(
       OFFSET ?`,
     [chat_id, end - start, start]
   )) as unknown as Message[]
-  return res.map((message) => normalize_message_speakers(message as Message)).toReversed()
+  return messages.map((message) => ensure_message_speaker_ids(message as Message)).toReversed()
 }
 
 export async function get_messages_before(
@@ -120,18 +115,18 @@ export async function get_messages_before(
   last_created_at: number,
   limit = 50
 ) {
-  const res = await exec_sql(
+  const messages = await exec_sql(
     `SELECT * FROM messages
       WHERE chat_id = ? AND created_at < ?
       ORDER BY created_at DESC, rowid DESC
       LIMIT ?`,
     [chat_id, last_created_at, limit]
   ) as unknown as Message[]
-  return res.map((message) => normalize_message_speakers(message as Message)).toReversed()
+  return messages.map((message) => ensure_message_speaker_ids(message as Message)).toReversed()
 }
 
 async function get_messages_before_message(message: Message, limit = 50) {
-  const res = await exec_sql(
+  const messages = await exec_sql(
     `SELECT * FROM messages
       WHERE chat_id = ? AND (
         created_at < (SELECT created_at FROM messages WHERE id = ?)
@@ -142,22 +137,24 @@ async function get_messages_before_message(message: Message, limit = 50) {
       LIMIT ?`,
     [message.chat_id, message.id, message.id, message.id, limit]
   ) as unknown as Message[]
-  return res.map((message) => normalize_message_speakers(message as Message)).toReversed()
+  return messages.map((message) => ensure_message_speaker_ids(message as Message)).toReversed()
 }
 
-function normalize_id_list(value: unknown, fallback?: Id): Id[] {
-  let ids: unknown = value
-  if (typeof ids === "string") {
-    try { ids = JSON.parse(ids) } catch { ids = [] }
+function parse_id_list(value: unknown, fallback_id?: Id): Id[] {
+  // Accept stored JSON or runtime arrays, and keep only unique, non-empty IDs.
+  let parsed_value: unknown = value
+  if (typeof parsed_value === "string") {
+    try { parsed_value = JSON.parse(parsed_value) } catch { parsed_value = [] }
   }
-  if (!Array.isArray(ids)) ids = []
-  const normalized = [...new Set((ids as unknown[]).filter((id): id is Id => typeof id === "string" && id.length > 0))]
-  if (!normalized.length && fallback) normalized.push(fallback)
-  return normalized
+  if (!Array.isArray(parsed_value)) parsed_value = []
+  const ids = [...new Set((parsed_value as unknown[]).filter((id): id is Id => typeof id === "string" && id.length > 0))]
+  if (!ids.length && fallback_id) ids.push(fallback_id)
+  return ids
 }
 
-function normalize_message_speakers(message: Message): Message {
-  message.speaker_ids = normalize_id_list(message.speaker_ids, message.speaker_id)
+function ensure_message_speaker_ids(message: Message): Message {
+  // Older messages have one speaker_id instead of a speaker_ids list.
+  message.speaker_ids = parse_id_list(message.speaker_ids, message.speaker_id)
   return message
 }
 
@@ -171,7 +168,7 @@ export async function get_entry<K extends TableName>(table: K, id: Id) {
   return rows[0] ?? null
 }
 
-export function get_entries<K extends TableName>(table: K, ids: Id[], ) {
+export function get_entries<K extends TableName>(table: K, ids: Id[]) {
   if (!ids.length) return []
   const placeholders = ids.map(() => '?').join(',')
   return query(
@@ -259,7 +256,7 @@ export async function refresh_chat_bubby_selects(chat: Chat) {
   const listener_picker = q("#chat-listeners") as HTMLElement & { setOptions?: (options: { value: Id, label: string }[], selected: Id[]) => void }
   listener_picker?.setOptions?.(
     bubbies.filter((bubby) => bubby.id !== chat.speaker_id).map((bubby) => ({ value: bubby.id, label: bubby.name || bubby.id })),
-    normalize_id_list(chat.listener_ids).filter((id) => id !== chat.speaker_id)
+    parse_id_list(chat.listener_ids).filter((id) => id !== chat.speaker_id)
   )
   return TEMP.involved_bubby_ids
 }
@@ -285,44 +282,44 @@ export function update_chat_cast(
   chat_id: Id,
   speaker_id: Id | null | undefined,
   listener_ids: Id[] | undefined,
-  req_bubby_ids: Id[],
+  requested_bubby_ids: Id[],
   chat_patch?: Partial<Chat>
 ): Promise<ChatCastState> {
   const write = chat_cast_write_queue.then(async () => {
     const chat = await get_entry("chats", chat_id)
     if (!chat) throw new Error(`Chat ${chat_id} does not exist`)
 
-    const bubby_ids = [...new Set(req_bubby_ids.filter(Boolean))]
+    const bubby_ids = [...new Set(requested_bubby_ids.filter(Boolean))]
     let next_speaker_id = speaker_id === undefined ? chat.speaker_id : speaker_id || null
-    let next_listener_ids = listener_ids === undefined ? normalize_id_list(chat.listener_ids) : [...new Set(listener_ids.filter(Boolean))]
+    let next_listener_ids = listener_ids === undefined ? parse_id_list(chat.listener_ids) : [...new Set(listener_ids.filter(Boolean))]
 
     if (next_speaker_id && next_speaker_id === chat.speaker_id && !bubby_ids.includes(next_speaker_id)) {
       next_speaker_id = null
     } else if (next_speaker_id && !bubby_ids.includes(next_speaker_id)) {
       bubby_ids.push(next_speaker_id)
     }
-    const normalized_bubby_ids = [...new Set(bubby_ids)]
+    const next_bubby_ids = [...new Set(bubby_ids)]
     // Explicit listener changes add members; membership edits prune removed listeners.
     if (listener_ids !== undefined) {
-      for (const id of next_listener_ids) if (!normalized_bubby_ids.includes(id)) normalized_bubby_ids.push(id)
+      for (const id of next_listener_ids) if (!next_bubby_ids.includes(id)) next_bubby_ids.push(id)
     } else {
-      next_listener_ids = next_listener_ids.filter((id) => normalized_bubby_ids.includes(id))
+      next_listener_ids = next_listener_ids.filter((id) => next_bubby_ids.includes(id))
     }
-    next_listener_ids = next_listener_ids.filter((id) => id !== next_speaker_id && normalized_bubby_ids.includes(id))
+    next_listener_ids = next_listener_ids.filter((id) => id !== next_speaker_id && next_bubby_ids.includes(id))
     // Commit the junction rows and JSON selection together to keep them in sync.
     await exec_sql("BEGIN TRANSACTION")
     try {
-      if (normalized_bubby_ids.length) {
-        const placeholders = normalized_bubby_ids.map(() => "?").join(",")
+      if (next_bubby_ids.length) {
+        const placeholders = next_bubby_ids.map(() => "?").join(",")
         await exec_sql(
           `DELETE FROM chat_bubbies WHERE chat_id = ? AND bubby_id NOT IN (${placeholders})`,
-          [chat_id, ...normalized_bubby_ids]
+          [chat_id, ...next_bubby_ids]
         )
       } else {
         await exec_sql("DELETE FROM chat_bubbies WHERE chat_id = ?", [chat_id])
       }
 
-      for (const bubby_id of normalized_bubby_ids) {
+      for (const bubby_id of next_bubby_ids) {
         await exec_sql(
           "INSERT OR IGNORE INTO chat_bubbies (chat_id, bubby_id) VALUES (?, ?)",
           [chat_id, bubby_id]
@@ -340,11 +337,11 @@ export function update_chat_cast(
       return {
         speaker_id: next_speaker_id,
         listener_ids: next_listener_ids,
-        bubby_ids: normalized_bubby_ids
+        bubby_ids: next_bubby_ids
       }
-    } catch (e) {
+    } catch (error) {
       await exec_sql("ROLLBACK").catch(() => {})
-      throw e
+      throw error
     }
   })
   chat_cast_write_queue = write.then(() => undefined, () => undefined)
@@ -375,23 +372,23 @@ export const sync_junction_table = async (
   item_ids: string[]
 ) => {
 
-  const [column_a, column_b] = JunctionColumns[table]
+  const [owner_column, item_column] = junction_columns[table]
 
   if (item_ids.length === 0) {
     return await exec_sql(`--sql
-DELETE FROM ${table} WHERE ${column_a} = ?`, [owner_id])
+DELETE FROM ${table} WHERE ${owner_column} = ?`, [owner_id])
   }
-  
-  const delete_placeholders = item_ids.map(() => '?').join(',')
+
+  const item_placeholders = item_ids.map(() => '?').join(',')
   const insert_values = item_ids.map(() => '(?, ?)').join(',')
 
   const delete_sql = `--sql
 BEGIN TRANSACTION;
-DELETE FROM ${table} WHERE ${column_a} = ? AND ${column_b} NOT IN (${delete_placeholders});`
+DELETE FROM ${table} WHERE ${owner_column} = ? AND ${item_column} NOT IN (${item_placeholders});`
   const delete_params = [owner_id, ...item_ids]
   
   const insert_sql = `--sql
-INSERT OR IGNORE INTO ${table} (${column_a}, ${column_b}) VALUES ${insert_values};
+INSERT OR IGNORE INTO ${table} (${owner_column}, ${item_column}) VALUES ${insert_values};
 COMMIT;`
   const insert_params = item_ids.flatMap((id) => [owner_id, id])
 
@@ -400,13 +397,13 @@ COMMIT;`
 }
 
 export async function get_junction_entries<K extends JunctionTableName>(
-  table: K, lookup_col: keyof JunctionEntryMap[K], ids: Id[]
+  table: K, lookup_column: keyof JunctionEntryMap[K], ids: Id[]
 ) {
   if (ids.length === 0) return []
   const placeholders = ids.map(() => '?').join(',')
   //@ts-ignore
-  const sql = `SELECT * FROM ${table} WHERE ${lookup_col} IN (${placeholders});`
-  return (await exec_sql(sql, ids))
+  const sql = `SELECT * FROM ${table} WHERE ${lookup_column} IN (${placeholders});`
+  return exec_sql(sql, ids)
 }
 
 export async function update_entry<K extends TableName>(
@@ -414,13 +411,13 @@ export async function update_entry<K extends TableName>(
   id: Id,
   data: Partial<TableEntryMap[K]>
 ) {
-  const entry_obj = stringify_entry(table, data)
-  const keys = Object.keys(entry_obj)
-  if (keys.length === 0) return
-  const columns_str = keys.map((k) => `${k} = ?`).join(', ')
-  const values = [...Object.values(entry_obj), id]
+  const entry = stringify_entry(table, data)
+  const columns = Object.keys(entry)
+  if (columns.length === 0) return
+  const set_clause = columns.map((column) => `${column} = ?`).join(', ')
+  const values = [...Object.values(entry), id]
 
-  return await exec_sql(`UPDATE ${table} SET ${columns_str} WHERE id = ?`, values)
+  return exec_sql(`UPDATE ${table} SET ${set_clause} WHERE id = ?`, values)
 }
 
 export function text_gen_abort() {
@@ -429,52 +426,55 @@ export function text_gen_abort() {
 
 
 
-type TextGenContext = {
+type GenContext = {
   speaker: Bubby,
   listener: Bubby,
   listeners: Bubby[],
   chat: Chat,
 }
 
-function is_prompt_triggered(prompt: Prompt, msgs: CoreMessage[]) {
+function is_prompt_triggered(prompt: Prompt, messages: CoreMessage[]) {
   if (!Array.isArray(prompt.trigger_words) || prompt.trigger_words.length === 0) {
     return false
   }
   return prompt.trigger_words.some((trigger) =>
-    msgs.some((m) => m.content.includes(trigger))
+    messages.some((message) => message.content.includes(trigger))
   )
 }
 
-function resolve_ctx_path(obj: Record<string, any>, path: string[]) {
-  let curr = obj
+function get_path_value(root_value: Record<string, any>, path: string[]) {
+  let value = root_value
   for (const key of path) {
-    if (curr == null) return ""
-    curr = curr[key]
+    if (value == null) return ""
+    value = value[key]
   }
-  if (typeof curr === "string") return curr
-  if (typeof curr === "object" && curr !== null) return curr.id ?? ""
+  if (typeof value === "string") return value
+  // Template values are text; represent linked objects by their ID instead of JSON.
+  if (typeof value === "object" && value !== null) return value.id ?? ""
   return ""
 }
 
-function resolve_multi_listener_property(listeners: Bubby[], property_path: string[]) {
-  const entries = listeners.map((listener) => ({
+function format_listener_property(listeners: Bubby[], property_path: string[]) {
+  const listener_values = listeners.map((listener) => ({
     name: listener.name || listener.id,
-    value: resolve_ctx_path(listener, property_path).trim()
+    value: get_path_value(listener, property_path).trim()
   })).filter((entry) => entry.value.length > 0)
 
-  if (entries.length < 2) return entries[0]?.value ?? ""
+  if (listener_values.length < 2) return listener_values[0]?.value ?? ""
 
-  const is_long = entries.some((entry) =>
+  // In a shared call, {{char.prop}} must describe every listener without blending their traits.
+  const has_long_value = listener_values.some((entry) =>
     entry.value.length > 100 || /[\r\n]/.test(entry.value)
   )
-  if (!is_long) {
-    const values = entries.map((entry) => entry.value)
+  if (!has_long_value) {
+    // Short values read naturally as a list: "John and Gerald".
+    const values = listener_values.map((entry) => entry.value)
     if (values.length === 2) return `${values[0]} and ${values[1]}`
     return `${values.slice(0, -1).join(", ")}, and ${values.at(-1)}`
   }
 
-  // Keep long descriptions separate so each listener's property remains attributable.
-  const blocks = entries.map((entry) => `${entry.name}:\n${entry.value}`)
+  // Keep long or multiline values separate so each description stays attributable.
+  const blocks = listener_values.map((entry) => `${entry.name}:\n${entry.value}`)
   const longest_backtick_run = Math.max(
     0,
     ...blocks.flatMap((block) => block.match(/`+/g) ?? []).map((run) => run.length)
@@ -483,144 +483,153 @@ function resolve_multi_listener_property(listeners: Bubby[], property_path: stri
   return blocks.map((block) => `${fence}text\n${block}\n${fence}`).join("\n\n")
 }
 
-const keywords_replacers: Record<
-  string, (path: string[], msgs: CoreMessage[]) => Promise<string | undefined>
+const speaker_label_re = /^\s*\[([^\]\r\n]+)\]\s*:\s*/
+
+/** Read a starting `[name]:` prefix and lowercase its label for comparison. */
+function get_leading_speaker_label(content: string) {
+  return speaker_label_re.exec(content)?.[1]?.trim().toLocaleLowerCase()
+}
+
+const template_replacers: Record<
+  string, (path: string[], messages: CoreMessage[]) => Promise<string | undefined>
 > = {
-  prompts: async (path, msgs) => {
+  prompts: async (path, messages) => {
     const id = path[1]
     if (!id) return ""
     const prompt = await get_entry("prompts", id)
     if (!prompt) return ""
-    return is_prompt_triggered(prompt, msgs) ? prompt.content : ""
+    return is_prompt_triggered(prompt, messages) ? prompt.content : ""
   },
-  libraries: async (_, msgs) => {
-    const lib_rows = await exec_sql<{ library_id: Id }>(
+  libraries: async (_, messages) => {
+    const library_rows = await exec_sql<{ library_id: Id }>(
       "SELECT library_id FROM chat_libraries WHERE chat_id = ?",
       [TEMP.chat.id]
     )
-    const lib_ids = lib_rows.map((row) => row.library_id)
-    if (lib_ids.length === 0) return ""
+    const library_ids = library_rows.map((row) => row.library_id)
+    if (library_ids.length === 0) return ""
 
     const prompt_rows = await get_junction_entries(
       "library_prompts",
       "library_id",
-      lib_ids
+      library_ids
     ) as { prompt_id: Id }[]
     const prompt_ids = prompt_rows.map((row) => row.prompt_id)
     const prompts = (await get_entries("prompts", prompt_ids)) as Prompt[]
 
     return prompts
-      .filter((p) => is_prompt_triggered(p, msgs))
-      .map((p) => `# ${p.id}\n${p.content}`)
+      .filter((prompt) => is_prompt_triggered(prompt, messages))
+      .map((prompt) => `# ${prompt.id}\n${prompt.content}`)
       .join("\n")
   },
 }
 
-async function replace_vars_from_text(
-  ctx: TextGenContext,
-  msgs: CoreMessage[],
+async function replace_vars_in_text(
+  gen_context: GenContext,
+  messages: CoreMessage[],
   text: string
 ) {
   const matches = [...text.matchAll(/\{\{(.+?)\}\}/g)]
   if (matches.length === 0) return text
 
   const tags = [...new Set(matches.map((m) => m[1].trim()))]
-  const ctx_alias = {
-    ...ctx,
-    char: ctx.listener,
-    user: ctx.speaker,
-    listeners: ctx.listeners,
+  const template_context = {
+    ...gen_context,
+    char: gen_context.listener,
+    user: gen_context.speaker,
+    listeners: gen_context.listeners,
   }
 
-  const resolved = await Promise.all(
+  const replacements = await Promise.all(
     tags.map(async (tag) => {
       const path = tag.split(".")
-      const root = path[0]
+      const tag_root = path[0]
 
-      if (keywords_replacers[root]) {
+      if (template_replacers[tag_root]) {
         try {
-          const val = await keywords_replacers[root](path, msgs)
-          return [tag, val ?? ""]
-        } catch (e) {
-          console.log(e)
+          const value = await template_replacers[tag_root](path, messages)
+          return [tag, value ?? ""]
+        } catch (error) {
+          console.log(error)
           return [tag, ""]
         }
       }
-      if (root === "char" && path.length > 1 && ctx.listeners.length > 1) {
-        return [tag, resolve_multi_listener_property(ctx.listeners, path.slice(1))]
+      // `char` means all listeners in a shared call; other roots use the primary context.
+      if (tag_root === "char" && path.length > 1 && gen_context.listeners.length > 1) {
+        return [tag, format_listener_property(gen_context.listeners, path.slice(1))]
       }
-      const val = resolve_ctx_path(ctx_alias, path)
-      return [tag, val]
+      const value = get_path_value(template_context, path)
+      return [tag, value]
     })
   )
 
   let result = text
-  for (const [tag, val] of resolved) {
-    result = result.replaceAll(`{{${tag}}}`, val)
+  for (const [tag, value] of replacements) {
+    result = result.replaceAll(`{{${tag}}}`, value)
   }
 
   return result
 }
 
-async function replace_all_content_variables (
-  ctx: TextGenContext,
-  all_msgs: CoreMessage[],
+async function replace_vars_in_messages (
+  gen_context: GenContext,
+  messages: CoreMessage[],
 ) {
-  for (let i = 0; i < all_msgs.length; i++) {
-    all_msgs[i].content = await replace_vars_from_text(
-      ctx, all_msgs, all_msgs[i].content
+  for (let message_index = 0; message_index < messages.length; message_index++) {
+    messages[message_index].content = await replace_vars_in_text(
+      gen_context, messages, messages[message_index].content
     )
   }
-  return all_msgs
+  return messages
 }
 
 export async function gen_text_req (
-  ctx: TextGenContext,
+  gen_context: GenContext,
   max_input_messages = 50,
   before_message?: Message
 ) {
-  const raw_history = before_message
+  const history = before_message
     ? await get_messages_before_message(before_message, max_input_messages)
     : await get_recent_messages(TEMP.chat.id!, 0, max_input_messages)
 
-  const label_speakers = (await get_chat_bubby_ids(ctx.chat.id)).length > 2
-  const history_needs_speaker_names = label_speakers || raw_history.some((message) =>
-    normalize_message_speakers(message).speaker_ids.length > 1
+  const is_group_chat = (await get_chat_bubby_ids(gen_context.chat.id)).length > 2
+  const needs_speaker_labels = is_group_chat || history.some((message) =>
+    ensure_message_speaker_ids(message).speaker_ids.length > 1
   )
-  const speakers = history_needs_speaker_names
-    ? await get_entries("bubbies", [...new Set(raw_history.flatMap((message) => normalize_message_speakers(message).speaker_ids))])
+  const speakers = needs_speaker_labels
+    ? await get_entries("bubbies", [...new Set(history.flatMap((message) => ensure_message_speaker_ids(message).speaker_ids))])
     : []
   const speaker_names = new Map<Id, string>(
     speakers.map((speaker): [Id, string] => [speaker.id, speaker.name])
   )
   
-  const core_history: CoreMessage[] = (await Promise.all(
-    raw_history.map(async h => {
+  const labeled_history: CoreMessage[] = (await Promise.all(
+    history.map(async (message) => {
       let content: string
-      if (h.role === "user") {
-        content = h.content ?? ""
+      if (message.role === "user") {
+        content = message.content ?? ""
       } else {
         const gens: TextGen[] = await exec_sql(
-          `SELECT * FROM textgens WHERE msg_id = ? ORDER BY created_at, rowid`, [h.id]
+          `SELECT * FROM textgens WHERE msg_id = ? ORDER BY created_at, rowid`, [message.id]
         )
-        const picked = gens[h.picked]
-        content = picked?.content ?? h.content ?? ""
+        const picked = gens[message.picked]
+        content = picked?.content ?? message.content ?? ""
       }
 
       // Detect "[name]:" at the start
-      const leading_label = /^\s*\[([^\]\r\n]+)\]\s*:/.exec(content)?.[1]?.trim().toLocaleLowerCase()
+      const speaker_label = get_leading_speaker_label(content)
       
+      // Assistant role alone loses who spoke in a group, so label history with its speaker IDs.
       // Group history needs speaker labels, but generated labels should not be doubled.
-      const already_labeled = h.role === "assistant" && leading_label !== undefined &&
-        h.speaker_ids.some((id) => [id, speaker_names.get(id)]
-          .some((name) => name?.toLocaleLowerCase() === leading_label))
-      if ((label_speakers || h.speaker_ids.length > 1) && !already_labeled) {
-        const display_names = h.speaker_ids.map((id) => (speaker_names.get(id) ?? id)
+      const has_speaker_label = message.role === "assistant" && speaker_label !== undefined &&
+        ensure_message_speaker_ids(message).speaker_ids.some((id) => [id, speaker_names.get(id)]
+          .some((name) => name?.toLocaleLowerCase() === speaker_label))
+      if ((is_group_chat || message.speaker_ids.length > 1) && !has_speaker_label) {
+        const display_names = message.speaker_ids.map((id) => (speaker_names.get(id) ?? id)
           .replace(/[\r\n\[\]]/g, " "))
         content = `[${display_names.join(" & ")}]: ${content}`
       }
       return {
-        role: h.role,
+        role: message.role,
         content
       }
     })
@@ -630,9 +639,9 @@ export async function gen_text_req (
   const chat_llm_config: Partial<LlmConfig> = TEMP.chat.llm_config_id ?
     (await get_entry("llm_configs", TEMP.chat.llm_config_id)) ?? {}
     : {}
-  const primary_listener = ctx.listeners[0] ?? ctx.listener
-  const bubby_llm_config: Partial<LlmConfig> = primary_listener.llm_config_id ?
-    (await get_entry("llm_configs", primary_listener.llm_config_id)) ?? {}
+  const first_listener = gen_context.listeners[0] ?? gen_context.listener
+  const bubby_llm_config: Partial<LlmConfig> = first_listener.llm_config_id ?
+    (await get_entry("llm_configs", first_listener.llm_config_id)) ?? {}
     : {}
   
   // prepare the llm_config
@@ -657,12 +666,12 @@ export async function gen_text_req (
     "https://openrouter.ai/api/v1/chat/completions"
   
   // A shared call needs each selected listener's identity and a distinct reaction.
-  const plz_label: CoreMessage = {
+  const speaker_label_instruction: CoreMessage = {
     role: "system",
     content: `Label response from each character with that character's name.`
   }
-  const all_msgs = await replace_all_content_variables(
-    ctx, [...merged_config.messages, plz_label, ...core_history]
+  const request_messages = await replace_vars_in_messages(
+    gen_context, [...merged_config.messages, speaker_label_instruction, ...labeled_history]
   );
 
   return {
@@ -670,7 +679,7 @@ export async function gen_text_req (
     api_url,
     body: {
       ...merged_config,
-      messages: all_msgs
+      messages: request_messages
     } as LlmParams
   }
 }
@@ -678,26 +687,26 @@ export async function gen_text_req (
 
 type MessageController = Awaited<ReturnType<typeof message_controller>>
 const message_controllers = new Map<Id, MessageController>()
-let generation_active = false
-let generating_message_id: Id | null = null
+let gen_active = false
+let gen_msg_id: Id | null = null
 
-async function delete_message(ctrl: MessageController) {
-  if (ctrl.delete_btn.disabled || (generation_active && generating_message_id === ctrl.message.id)) return
+async function delete_message(controller: MessageController) {
+  if (controller.delete_btn.disabled || (gen_active && gen_msg_id === controller.message.id)) return
 
-  ctrl.delete_btn.disabled = true
+  controller.delete_btn.disabled = true
   try {
-    await delete_entry("messages", ctrl.message.id)
-    ctrl.elem.remove()
-    message_controllers.delete(ctrl.message.id)
-  } catch (e) {
-    ctrl.delete_btn.disabled = false
-    ctrl.elem.classList.add("error")
-    ctrl.content_c.append(t.error_c({ innerText: `Delete failed: ${(e as Error).message ?? String(e)}` }))
+    await delete_entry("messages", controller.message.id)
+    controller.elem.remove()
+    message_controllers.delete(controller.message.id)
+  } catch (error) {
+    controller.delete_btn.disabled = false
+    controller.elem.classList.add("error")
+    controller.content_c.append(t.error_c({ innerText: `Delete failed: ${(error as Error).message ?? String(error)}` }))
   }
 }
 
 async function message_controller (bubby: Bubby, chat: Chat, message: Message, textgens: TextGen[]) {
-  normalize_message_speakers(message)
+  ensure_message_speaker_ids(message)
   const speaker_entries = await get_entries("bubbies", message.speaker_ids)
   const speakers = message.speaker_ids
     .map((id) => speaker_entries.find((speaker) => speaker.id === id))
@@ -730,7 +739,7 @@ async function message_controller (bubby: Bubby, chat: Chat, message: Message, t
   Object.assign(delete_button, {
     title: "Delete message"
   })
-  const generation_label = t.span() as HTMLButtonElement
+  const gen_label = t.span() as HTMLButtonElement
   const previous_button = t.button({
     type: "button",
     innerText: "<",
@@ -742,15 +751,15 @@ async function message_controller (bubby: Bubby, chat: Chat, message: Message, t
     title: "Next generation"
   }) as HTMLButtonElement
 
-  const generations_c = t.utils_c(delete_button)
+  const gen_controls_c = t.utils_c(delete_button)
   if (message.role === "assistant") {
-    generations_c.append(t.group_c(
+    gen_controls_c.append(t.group_c(
       previous_button,
-      generation_label,
+      gen_label,
       next_button
     ))
   }
-  elem.append(generations_c)
+  elem.append(gen_controls_c)
 
   const controller = {
     bubby,
@@ -761,73 +770,74 @@ async function message_controller (bubby: Bubby, chat: Chat, message: Message, t
     elem,
     content_c,
     delete_btn: delete_button,
-    textgen_label: generation_label,
+    gen_label,
     prev_btn: previous_button,
     next_btn: next_button
   }
   message_controllers.set(message.id, controller)
-  refresh_textgen_ctrls(controller)
-  previous_button.addEventListener("click", () => void select_generation(controller, -1))
-  next_button.addEventListener("click", () => void select_generation(controller, 1))
+  refresh_gen_controls(controller)
+  previous_button.addEventListener("click", () => void select_gen(controller, -1))
+  next_button.addEventListener("click", () => void select_gen(controller, 1))
   return controller
 }
 
-function refresh_textgen_ctrls(ctrl: MessageController) {
-  const count = ctrl.textgens.length
-  const picked = Math.max(0, Math.min(ctrl.message.picked, Math.max(0, count - 1)))
-  ctrl.message.picked = picked
-  ctrl.textgen_label.innerText = count ? `${picked + 1} / ${count}` : "1 / 1"
-  ctrl.prev_btn.disabled = generation_active || picked <= 0
-  ctrl.next_btn.disabled = generation_active
-  ctrl.delete_btn.disabled = generation_active && generating_message_id === ctrl.message.id
+function refresh_gen_controls(controller: MessageController) {
+  const count = controller.textgens.length
+  const picked = Math.max(0, Math.min(controller.message.picked, Math.max(0, count - 1)))
+  controller.message.picked = picked
+  controller.gen_label.innerText = count ? `${picked + 1} / ${count}` : "1 / 1"
+  controller.prev_btn.disabled = gen_active || picked <= 0
+  controller.next_btn.disabled = gen_active
+  controller.delete_btn.disabled = gen_active && gen_msg_id === controller.message.id
 }
 
-async function select_generation(ctrl: MessageController, direction: -1 | 1) {
-  if (generation_active) return
-  const next_index = ctrl.message.picked + direction
+async function select_gen(controller: MessageController, direction: -1 | 1) {
+  if (gen_active) return
+  const next_index = controller.message.picked + direction
   if (next_index < 0) return
 
-  if (next_index < ctrl.textgens.length) {
-    ctrl.message.picked = next_index
-    await update_entry("messages", ctrl.message.id, { picked: next_index })
-    const content = ctrl.textgens[next_index].content
-    ctrl.message.content = content
-    ctrl.content_c.innerHTML = await format_displayed_msg(content)
-    refresh_textgen_ctrls(ctrl)
+  if (next_index < controller.textgens.length) {
+    controller.message.picked = next_index
+    await update_entry("messages", controller.message.id, { picked: next_index })
+    const content = controller.textgens[next_index].content
+    controller.message.content = content
+    controller.content_c.innerHTML = await format_displayed_msg(content)
+    refresh_gen_controls(controller)
     return
   }
 
-  const speaker = await get_entry("bubbies", ctrl.message.listener_id)
+  const speaker = await get_entry("bubbies", controller.message.listener_id)
   if (!speaker) return
-  await gen_message(speaker, ctrl, false, true)
+  await gen_message(speaker, controller, false, true)
 }
 
-function safe_stringify (str: Record<string, any>) {
+function safe_stringify(value: Record<string, any>) {
   try {
-    return JSON.stringify(str)
-  } catch (e) {
-    console.log(e)
+    return JSON.stringify(value)
+  } catch (error) {
+    console.log(error)
     return ""
   }
 }
 
-function safe_parse (str: string|any) {
+function safe_parse(value: string | any) {
   try {
-    return JSON.parse(str)
-  } catch (e) {
-    console.log(e)
+    return JSON.parse(value)
+  } catch (error) {
+    console.log(error)
     return {}
   }
 }
 
-const format_chunk = (str: string) => pipe(str, (s) =>
-  s.replaceAll("\\n", "<br>").replaceAll(`\\"`, `"`)
+const format_chunk = (text: string) => pipe(text, (chunk) =>
+  chunk.replaceAll("\\n", "<br>").replaceAll(`\\"`, `"`)
 );
 
 function strip_leading_speaker_label(content: string, speakers: Bubby[]) {
-  const match = /^\s*\[([^\]\r\n]+)\]\s*:\s*/.exec(content)
+  const match = speaker_label_re.exec(content)
   if (!match) return content
 
+  // Remove a redundant whole-reply prefix before saving; per-character labels carry distinct reactions.
   // In a group reply, labels identify individual reactions. Only remove a
   // redundant label for the whole group; preserve labels for each speaker.
   if (speakers.length > 1) {
@@ -843,17 +853,17 @@ function strip_leading_speaker_label(content: string, speakers: Bubby[]) {
   return content.slice(match[0].length)
 }
 
-export async function stream_and_show_text_gen(
+export async function stream_gen_text(
   stream: boolean,
   response: Response,
-  ctrl: MessageController,
+  controller: MessageController,
   initial_text = "",
   persist_message = true
 ) {
   if (!response.ok) {
     const error_text = await response.text()
-    ctrl.elem.classList.add("error")
-    ctrl.content_c.replaceChildren(
+    controller.elem.classList.add("error")
+    controller.content_c.replaceChildren(
       t.error_c({ innerText: `Error: ${error_text}` })
     );
     throw Error(`Error: ${error_text}`)
@@ -870,99 +880,99 @@ export async function stream_and_show_text_gen(
   if (!stream) {
     const text = strip_leading_speaker_label(
       initial_text + await llm.no_stream_parse(response),
-      ctrl.speakers
+      controller.speakers
     );
-    if (persist_message) ctrl.message.content = text
-    ctrl.content_c.innerHTML = await format_content(text)
-    if (persist_message) await update_entry("messages", ctrl.message.id, { content: text })
+    if (persist_message) controller.message.content = text
+    controller.content_c.innerHTML = await format_content(text)
+    if (persist_message) await update_entry("messages", controller.message.id, { content: text })
     return text;
   }
 
   let buffer = "";
   let last_saved_at = Date.now()
-  await llm.stream_response_body(response.body!, async (res: any) => {
-    const delta = res.choices[0]?.delta?.content;
+  await llm.stream_response_body(response.body!, async (response_chunk: any) => {
+    const delta = response_chunk.choices[0]?.delta?.content;
     if (!delta) return;
 
     buffer += await format_chunk(delta);
     const full_text = initial_text + buffer
-    if (persist_message) ctrl.message.content = full_text
-    ctrl.content_c.innerHTML = await format_content(full_text)
+    if (persist_message) controller.message.content = full_text
+    controller.content_c.innerHTML = await format_content(full_text)
     if (persist_message && Date.now() - last_saved_at >= 750) {
       last_saved_at = Date.now()
-      await update_entry("messages", ctrl.message.id, { content: full_text })
+      await update_entry("messages", controller.message.id, { content: full_text })
     }
   });
-  const full_text = strip_leading_speaker_label(initial_text + buffer, ctrl.speakers)
-  ctrl.content_c.innerHTML = await format_content(full_text)
+  const full_text = strip_leading_speaker_label(initial_text + buffer, controller.speakers)
+  controller.content_c.innerHTML = await format_content(full_text)
   if (persist_message) {
-    ctrl.message.content = full_text
-    await update_entry("messages", ctrl.message.id, { content: full_text })
+    controller.message.content = full_text
+    await update_entry("messages", controller.message.id, { content: full_text })
   }
   return full_text;
 }
 
 async function gen_message (
   speaker: Bubby,
-  ctrl: MessageController,
-  resume = false,
-  alternative = false
+  controller: MessageController,
+  is_resuming = false,
+  is_alternative = false
 ): Promise<TextGen|undefined> {
-  if (generation_active) return
-  generation_active = true
-  generating_message_id = ctrl.message.id
-  refresh_textgen_ctrls(ctrl)
+  if (gen_active) return
+  gen_active = true
+  gen_msg_id = controller.message.id
+  refresh_gen_controls(controller)
   TEMP.text_gen_aborter = new AbortController()
-  const initial_text = resume ? ctrl.message.content ?? "" : ""
-  ctrl.content_c.innerHTML = "";
-  ctrl.elem.classList.remove("error")
-  ctrl.content_c.classList.add("pending");
-  ctrl.elem.scrollIntoView({ behavior: "smooth" });
+  const initial_text = is_resuming ? controller.message.content ?? "" : ""
+  controller.content_c.innerHTML = "";
+  controller.elem.classList.remove("error")
+  controller.content_c.classList.add("pending");
+  controller.elem.scrollIntoView({ behavior: "smooth" });
 
-  let req!: GeneralRequestTemplate
+  let request!: GeneralRequestTemplate
   let text: string
 
   try {
-    req = await gen_text_req({
+    request = await gen_text_req({
       speaker: speaker,
-      listener: ctrl.bubby,
-      listeners: ctrl.speakers,
+      listener: controller.bubby,
+      listeners: controller.speakers,
       chat: TEMP.chat as Chat
     }, TEMP.user_config.chat.max_input_messages ?? 50,
-    alternative ? ctrl.message : undefined)
-    if (!resume && !alternative) {
-      ctrl.message.content = ""
-      await create_entry("messages", ctrl.message)
+    is_alternative ? controller.message : undefined)
+    if (!is_resuming && !is_alternative) {
+      controller.message.content = ""
+      await create_entry("messages", controller.message)
     }
-    const res = await llm.GEN_TEXT.OpenRouter(req);
-    text = await stream_and_show_text_gen(
-      Boolean(req.body.stream), res, ctrl, initial_text, !alternative
+    const response = await llm.GEN_TEXT.OpenRouter(request);
+    text = await stream_gen_text(
+      Boolean(request.body.stream), response, controller, initial_text, !is_alternative
     );
-  } catch (e) {
+  } catch (error) {
     const message = TEMP.text_gen_aborter.signal.aborted
       ? "Generation cancelled."
-      : `Generation failed: ${(e as Error).message ?? String(e)}`
-    if (!alternative && ctrl.message.content !== null) {
-      const partial_text = strip_leading_speaker_label(ctrl.message.content, ctrl.speakers)
-      ctrl.message.content = partial_text
-      await update_entry("messages", ctrl.message.id, { content: partial_text })
-      ctrl.content_c.innerHTML = await format_displayed_msg(partial_text)
+      : `Generation failed: ${(error as Error).message ?? String(error)}`
+    if (!is_alternative && controller.message.content !== null) {
+      const partial_text = strip_leading_speaker_label(controller.message.content, controller.speakers)
+      controller.message.content = partial_text
+      await update_entry("messages", controller.message.id, { content: partial_text })
+      controller.content_c.innerHTML = await format_displayed_msg(partial_text)
     }
-    ctrl.content_c.append(t.error_c({ innerText: message }))
-    ctrl.elem.classList.add("error")
+    controller.content_c.append(t.error_c({ innerText: message }))
+    controller.elem.classList.add("error")
     return
   } finally {
-    ctrl.content_c.classList.remove("pending");
-    generation_active = false
-    generating_message_id = null
-    refresh_textgen_ctrls(ctrl)
+    controller.content_c.classList.remove("pending");
+    gen_active = false
+    gen_msg_id = null
+    refresh_gen_controls(controller)
   }
   
-  if (!alternative) await update_entry("messages", ctrl.message.id, { content: text })
+  if (!is_alternative) await update_entry("messages", controller.message.id, { content: text })
 
   const llm_gen_entry: TextGen = {
-    msg_id: ctrl.message.id,
-    model: req.body.model,
+    msg_id: controller.message.id,
+    model: request.body.model,
     content: text,
     tokens: 0, // to be implemented later
     cost: 0, // to be implemented later
@@ -970,36 +980,36 @@ async function gen_message (
   }
   await create_entry("textgens", llm_gen_entry, false)
 
-  ctrl.textgens = await exec_sql(
+  controller.textgens = await exec_sql(
     "SELECT * FROM textgens WHERE msg_id = ? ORDER BY created_at, rowid",
-    [ctrl.message.id]
+    [controller.message.id]
   ) as TextGen[]
-  ctrl.message.picked = alternative ? ctrl.textgens.length - 1 : Math.max(0, ctrl.textgens.length - 1)
-  await update_entry("messages", ctrl.message.id, {
-    picked: ctrl.message.picked,
-    ...(!alternative ? { content: text } : {})
+  controller.message.picked = is_alternative ? controller.textgens.length - 1 : Math.max(0, controller.textgens.length - 1)
+  await update_entry("messages", controller.message.id, {
+    picked: controller.message.picked,
+    ...(!is_alternative ? { content: text } : {})
   })
-  ctrl.message.content = text
-  ctrl.content_c.innerHTML = await format_displayed_msg(text)
-  refresh_textgen_ctrls(ctrl)
+  controller.message.content = text
+  controller.content_c.innerHTML = await format_displayed_msg(text)
+  refresh_gen_controls(controller)
 
   return llm_gen_entry
 }
 
 export async function resume_last_reply() {
-  if (generation_active) return false
+  if (gen_active) return false
   if (!TEMP.chat.id) throw Error("Chat ID not specified")
   const [message] = await get_recent_messages(TEMP.chat.id, 0, 1)
   if (!message || message.role !== "assistant" || message.content === null) return false
 
-  const generations = (await exec_sql(
+  const gen_rows = (await exec_sql(
     "SELECT msg_id FROM textgens WHERE msg_id = ?",
     [message.id]
   )).filter((message) => message.role !== "assistant" || message.content.length > 0)
-  if (generations.length > 0) return false
+  if (gen_rows.length > 0) return false
 
   const original_speaker = await get_entry("bubbies", message.listener_id)
-  const reply_character = await get_entry("bubbies", normalize_message_speakers(message).speaker_ids[0])
+  const reply_character = await get_entry("bubbies", ensure_message_speaker_ids(message).speaker_ids[0])
   if (!original_speaker || !reply_character) return false
 
   const controller = message_controllers.get(message.id) ?? await message_controller(
@@ -1015,12 +1025,12 @@ export async function resume_last_reply() {
 }
 
 export async function send() {
-  if (generation_active) return
+  if (gen_active) return
   if (!TEMP.chat.id) throw Error("Chat ID not specified");
 
   // GET DOM
   const prompt_c = q("prompt-c")! as HTMLDivElement;
-  const msg_list = q("interactions-c")!;
+  const interaction_list = q("interactions-c")!;
 
   // GET CHAT AND CHARACTERS
   const speaker_id = TEMP.chat.speaker_id;
@@ -1028,7 +1038,7 @@ export async function send() {
   if (!speaker_id) {
     throw Error(`Speaker is not specified`);
   }
-  const listener_ids = normalize_id_list(TEMP.chat.listener_ids).filter((id) => id !== speaker_id)
+  const listener_ids = parse_id_list(TEMP.chat.listener_ids).filter((id) => id !== speaker_id)
   const listener_rows = await get_entries("bubbies", listener_ids)
   const listeners = listener_ids.map((id) => listener_rows.find((bubby) => bubby.id === id)).filter((bubby): bubby is Bubby => !!bubby)
   if (!listeners.length) throw Error("Add at least one Bubby besides the speaker to this chat.")
@@ -1036,7 +1046,7 @@ export async function send() {
   // Empty prompts request an assistant continuation without adding a user turn.
   const prompt = prompt_c.innerText as string;
   const has_prompt = prompt.trim().length > 0
-  const primary_listener_id = listener_ids[0]
+  const first_listener_id = listener_ids[0]
   const saved_user_msg: Message | null = has_prompt ? {
     role: "user",
     content: prompt,
@@ -1044,7 +1054,7 @@ export async function send() {
     id: crypto.randomUUID(),
     speaker_id,
     speaker_ids: [speaker_id],
-    listener_id: primary_listener_id,
+    listener_id: first_listener_id,
     created_at: Temporal.Now.instant().epochMilliseconds,
     picked: 0,
   } : null
@@ -1054,7 +1064,7 @@ export async function send() {
     content: null,
     chat_id: TEMP.chat.id!,
     id: crypto.randomUUID(),
-    speaker_id: primary_listener_id,
+    speaker_id: first_listener_id,
     speaker_ids: listener_ids,
     listener_id: speaker_id,
     created_at: Temporal.Now.instant().epochMilliseconds,
@@ -1071,21 +1081,21 @@ export async function send() {
   
   const chat = TEMP.chat as Chat
 
-  const llm_msg_ctrl = await message_controller(listeners[0], chat, saved_llm_msg, [])
+  const assistant_message_controller = await message_controller(listeners[0], chat, saved_llm_msg, [])
 
   // Append the user turn only when the prompt contains text.
   if (saved_user_msg) {
-    const user_msg_ctrl = await message_controller(speaker, chat, saved_user_msg, [])
-    msg_list.append(user_msg_ctrl.elem)
+    const user_message_controller = await message_controller(speaker, chat, saved_user_msg, [])
+    interaction_list.append(user_message_controller.elem)
   }
-  msg_list.append(llm_msg_ctrl.elem);
+  interaction_list.append(assistant_message_controller.elem);
 
   // ACTUALLY GENERATE THE TEXT
   try {
-    await gen_message(speaker, llm_msg_ctrl) as TextGen
-    llm_msg_ctrl.elem.scrollIntoView({ behavior: "smooth" });
-  } catch (e) {
-    console.log(e)
+    await gen_message(speaker, assistant_message_controller) as TextGen
+    assistant_message_controller.elem.scrollIntoView({ behavior: "smooth" });
+  } catch (error) {
+    console.log(error)
   }
 }
 
@@ -1120,10 +1130,9 @@ export async function load_chat(chat: Chat) {
     }
   }
 
-  const c: HTMLElement[] = []
+  const message_elements: HTMLElement[] = []
 
-  for (let i = 0; i < history.length; i++) {
-    const message = history[i] as Message
+  for (const message of history) {
     const speaker = await get_entry("bubbies", message.speaker_id)
     if (!speaker) {
       console.log(`Speaker of ID ${message.speaker_id} does not exist!`)
@@ -1137,16 +1146,16 @@ export async function load_chat(chat: Chat) {
           innerText: `<Speaker of ID ${message.speaker_id} does not exist!>`
         })
       )
-      c.push(err)
+      message_elements.push(err)
       continue
     }
     const textgens = message.role === "assistant" ? 
     (await exec_sql(`SELECT * FROM textgens WHERE msg_id = ? ORDER BY created_at, rowid`, [message.id])) as TextGen[] 
     : []
     const msg_c = await message_controller(speaker, chat, message, textgens)
-    c.push(msg_c.elem)
+    message_elements.push(msg_c.elem)
   }
-  interaction_c.replaceChildren(...c)
-  let last = c.at(-1)
-  if (last) last.scrollIntoView({ behavior: "smooth" });
+  interaction_c.replaceChildren(...message_elements)
+  const last_message_element = message_elements.at(-1)
+  if (last_message_element) last_message_element.scrollIntoView({ behavior: "smooth" });
 }

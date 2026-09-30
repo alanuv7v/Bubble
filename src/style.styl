@@ -550,14 +550,14 @@ enter-chat {
   justify-content: center;
   
   list-c > .item > .content {
-      flex-wrap: wrap
-      > .info {
-        flex-grow: 1
-        display: flex
-        flex-direction: column
-        min-width: 40ch
-        gap: 0.25lh
-      }
+    flex-wrap: wrap
+    > .info {
+      flex-grow: 1
+      display: flex
+      flex-direction: column
+      min-width: 30ch
+      gap: 0.25lh
+    }
   }
 }
 
@@ -565,19 +565,20 @@ list-c > .item {
   display: flex;
   align-items: center;
   gap: 0.5lh;
-  padding: 0.5lh;
+  padding: 1lh;
+  flex-wrap: wrap
   transition: background 0.2s ease;
   border-radius: var(--border-rad)
+  group-c {
+    width fit-content
+  }
 }
 
 list-c > .item > .content {
-
   display: flex
-  gap: 1lh;
-
+  flex-direction: column
+  gap: 0.5lh;
   flex: 1;
-  min-width: 0;
-  padding: 0.5lh;
   cursor: pointer;
 }
 
@@ -593,7 +594,7 @@ list-c > .item > .delete {
   color: var(--error);
 }
 
-enter-chat list-c > .item > .content > .profiles {
+enter-chat list-c > .item .profiles {
   display: flex;
   align-items: center;
   gap: 0.5lh;
@@ -602,7 +603,7 @@ enter-chat list-c > .item > .content > .profiles {
   position: relative
 }
 
-enter-chat list-c > .item > .content > .profiles img.profile {
+enter-chat list-c > .item img.profile {
   width: 8lh;
   height: 8lh;
   border-radius: var(--border-rad);

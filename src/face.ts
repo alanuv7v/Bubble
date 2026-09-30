@@ -7,8 +7,8 @@ import { Bubby, Chat, instantiate, LlmConfig, LlmParams } from "./definitions.ts
 import obj_editor from "./ui_components/obj_editor.ts";
 import { user_config_def } from "./user_config.ts";
 import { get_img_src, pick_and_save_image, rename_asset } from "./assets.ts";
-import render_list from "./ui_components/render_list.ts";
 import multi_select_picker from "./ui_components/multi_select_picker.ts";
+import render_list_item from "./ui_components/render_list.ts";
 
 
 const chat_list_c = t.list_c()
@@ -171,7 +171,7 @@ const enter_chat = t.enter_chat(
         last_use_at: null,
         llm_config_id: null,
       }
-    ), 
+    ),
     async () => render_chat_list(await get_recent_entries("chats", 0, 10))
   ),
   stat_c
@@ -212,14 +212,11 @@ function timestamp_to_info(timestamp: number) {
 }
 
 async function render_chat_list (chats: Chat[]) {
-  await render_list(chat_list_c, chats, async (chat) => {
-    const bubbies = await get_chat_bubbies(chat.id)
-    const bubby_images = await Promise.all(bubbies.map(async (bubby) => t.img({
-      className: "profile",
-      src: await get_img_src(`${bubby.id}.webp`, "assets/profile_fallback.webp"),
-      alt: bubby.name,
-      title: bubby.name,
-    })))
+  const edit_item = async (chat: Chat) => {
+    TEMP.chat = chat
+    show_one_dom("Edit Chat")
+  }
+  const render_item = async (chat: Chat, bubbies: Bubby[]) => {
     return t.div(
       { 
         onclick () {
@@ -237,12 +234,29 @@ async function render_chat_list (chats: Chat[]) {
           t.div({ innerText: `last use: ${chat.last_use_at ? timestamp_to_info(chat.last_use_at).toLocaleString() : "never"}` })
         )
       ),
-      t.div({ className: "profiles" }, ...bubby_images),
     )
-  }, async (chat) => {
+  }
+  const delete_item = async (chat: Chat) => {
     await delete_entry("chats", chat.id)
     if (TEMP.chat.id === chat.id) TEMP.chat.id = undefined
-  })
+  }
+  const children = await Promise.all(
+    chats.map(async chat => {
+      
+      const bubbies = await get_chat_bubbies(chat.id)
+      const dom = await render_list_item(chat, edit_item, chats => render_item(chats, bubbies), delete_item)
+      const bubby_images = await Promise.all(bubbies.map(async (bubby) => t.img({
+        className: "profile",
+        src: await get_img_src(`${bubby.id}.webp`, "assets/profile_fallback.webp"),
+        alt: bubby.name,
+        title: bubby.name,
+      })))
+
+      dom.append(t.div({ className: "profiles" }, ...bubby_images))
+      return dom
+    })
+  )
+  chat_list_c.replaceChildren(...children)
 }
 
 const list_c_c = t.list_c()
@@ -262,13 +276,23 @@ const bubbies_c = t.bubbies_c(
 
 const llm_config_list_c = t.list_c()
 async function refresh_llm_config_list () {
-  await render_list(llm_config_list_c, await get_recent_entries("llm_configs", 0, 10), c => t.div({
-      innerText: c.name,
-      onclick: () => {
-        TEMP.edited_llm_config_id = c.id
-        show_one_dom("LLM Config")
-      }
-    }), c => delete_entry("llm_configs", c.id))
+  const edit_item = (c: LlmConfig) => {
+    TEMP.edited_llm_config_id = c.id
+    show_one_dom("LLM Config")
+  }
+  const render_item = (c: LlmConfig) => t.div({
+    innerText: c.name,
+    onclick: () => {
+      TEMP.edited_llm_config_id = c.id
+      show_one_dom("LLM Config")
+    }
+  })
+  const delete_item = (c: LlmConfig) => delete_entry("llm_configs", c.id)
+  const configs = await get_recent_entries("llm_configs", 0, 10)
+  const children = await Promise.all(
+    configs.map(async config => await render_list_item(config, edit_item, render_item, delete_item))
+  )
+  llm_config_list_c.replaceChildren(...children)
 }
 const llm_configs_c = t.llm_configs(
   llm_config_list_c,
@@ -323,12 +347,12 @@ async function render_bubby_config (bubby: Bubby) {
     ),
     obj_editor(Bubby, bubby, {
       async save(old_id) {
-        const previous_id = old_id ?? bubby.id
+        const prev_id = old_id ?? bubby.id
         const next_id = bubby.id
         return save_action(async () => {
-          const rollback_image_rename = await rename_asset(`${previous_id}.webp`, `${next_id}.webp`)
+          const rollback_image_rename = await rename_asset(`${prev_id}.webp`, `${next_id}.webp`)
           try {
-            await update_entry("bubbies", previous_id, bubby)
+            await update_entry("bubbies", prev_id, bubby)
           } catch (error) {
             await rollback_image_rename()
             throw error
@@ -608,7 +632,14 @@ const refresh: Partial<Record<keyof typeof nav, () => void | Promise<void>>> = {
 export async function render() {
  return [
     t.stack_c(
-      ...Object.keys(nav).map((title) => t.button({
+      ...[
+        "Enter",
+        "Chat",
+        "Bubbies",
+        "LLM Configs",
+        "Controls",
+        "Guide"
+      ].map((title) => t.button({
         innerText: title,
         async onclick () {
           show_one_dom(title as keyof typeof nav)
