@@ -7,11 +7,19 @@
   caret-color: var(--light);
   text-wrap: auto;
   font-size: 18px;
+
+  /* Shared rhythm for gaps, padding, and offsets. */
+  --space-xs: 0.25lh;
+  --space-sm: 0.5lh;
+  --space-md: 1lh;
 }
+
+/* ========================================================================== */
+/* Global defaults and app shell */
+/* ========================================================================== */
 
 * {
   line-height: 1lh
-  /* line-height: 1lh !important; */
   transition: box-shadow 0.125s, outline-color 0.2s;
   animation: fadein 0.2s ease-in;
 }
@@ -48,7 +56,6 @@ body {
 main {
   width: 100dvw;
   height: 100svh;
-  //padding: 0.5lh;
   display: flex;
   position: relative;
 
@@ -87,7 +94,7 @@ p {
 nav {
   display: flex;
   flex-direction: column;
-  gap: 0.5lh;
+  gap: var(--space-sm);
   align-items: stretch;
   width: 12ch;
   word-break: keep-all;
@@ -98,10 +105,13 @@ nav {
   }
 }
 
+/* ========================================================================== */
+/* Form controls */
+/* ========================================================================== */
 
 *[contenteditable="true"], select {
   min-height: 2lh;
-  padding: 0.5lh;
+  padding: var(--space-sm);
   overflow: auto;
   border-radius: var(--border-rad);
 }
@@ -122,8 +132,8 @@ input, button, select, *[contenteditable="true"] {
 
   position: relative;
   
-  padding-left: 0.5lh;
-  padding-right: 0.5lh;
+  padding-left: var(--space-sm);
+  padding-right: var(--space-sm);
   // padding-top: 0.5lh;
   // padding-bottom: 0.5lh;
 
@@ -158,7 +168,7 @@ select::after {
   position: absolute;
   right: 1ch;
   height: 1lh;
-  top: calc(50% - 0.5lh);
+  top: calc(50% - var(--space-sm));
   content: "⇵";
   display: flex
   align-items: center
@@ -196,7 +206,7 @@ select {
   overflow: auto;
   background: var(--bg-color)
   border-radius: var(--border-rad)
-  padding: 0.5lh
+  padding: var(--space-sm)
 }
 
 .multiselect[hidden] {
@@ -210,9 +220,13 @@ select {
   white-space: nowrap;
 }
 
+/* ========================================================================== */
+/* Shared controls, groups, and motion */
+/* ========================================================================== */
+
 utils-c {
   display: flex;
-  gap: 0.25lh;
+  gap: var(--space-xs);
 }
 
 message-c > utils-c {
@@ -224,14 +238,14 @@ message-c > utils-c {
 
 message-c {
   utils-c group-c > span {
-    padding: 0.5lh
+    padding: var(--space-sm)
   }
 }
 
 
 button:has(> img), .select:has(> img) {
   display: flex;
-  gap: 0.25lh;
+  gap: var(--space-xs);
   align-items: center;
 }
 
@@ -264,7 +278,7 @@ button > img, .select > img /* icon */ {
 @keyframes rise {
   from {
     opacity: 70%;
-    translate: 0px 0.25lh;
+    translate: 0px var(--space-xs);
     scale: 0.9;
   }
   to { 
@@ -292,14 +306,11 @@ group-c.horizontal {
   > * {
     border-radius: 0px;
   }
-  /* > label + * { */
   > *:first-child {
-    border-radius: 0px;
     border-top-left-radius: var(--border-rad);
     border-bottom-left-radius: var(--border-rad);
   }
   > *:last-child {
-    border-radius: 0px;
     border-top-right-radius: var(--border-rad);
     border-bottom-right-radius: var(--border-rad);
   }
@@ -336,11 +347,15 @@ group-c.vertical {
 }
 
 not-connected {
-  padding: 1lh;
+  padding: var(--space-md);
   > * {
     white-space: break-spaces;
   }
 }
+
+/* ========================================================================== */
+/* Responsive layout */
+/* ========================================================================== */
 
 @media (max-width: 800px) {
   request-c {
@@ -383,6 +398,10 @@ not-connected {
 }
 
 
+
+/* ========================================================================== */
+/* Inputs and typography */
+/* ========================================================================== */
 
 input {
   //all: inherit;
@@ -431,7 +450,7 @@ input[type="checkbox"]:disabled {
 .pretty {
   display: flex;
   flex-direction: column;
-  gap: 1lh;
+  gap: var(--space-md);
   align-items: center;
   justify-content: center;
   width: 100%;
@@ -461,6 +480,10 @@ h3 {
   line-height: 1.25lh
 }
 
+/* ========================================================================== */
+/* Utility states and small content elements */
+/* ========================================================================== */
+
 start-c {
   width: 100%;
   height: 100%;
@@ -468,7 +491,7 @@ start-c {
     opacity: 50%;
   }
   wrap-c {
-    gap: 1lh;
+    gap: var(--space-md);
   }
   group-c {
     width: 20ch;
@@ -489,7 +512,7 @@ start-c {
   position: absolute;
   bottom: 0px;
   left: 0px;
-  padding: 0.25lh;
+  padding: var(--space-xs);
   transform: translate(-0%, 100%);
   background-color: var(--bg-color);
   pointer-events: none;
@@ -520,6 +543,10 @@ group-c > *  {
 
 
 
+/* ========================================================================== */
+/* Chat, lists, and message layout */
+/* ========================================================================== */
+
 in-chat {
   overflow: hidden;
   display: flex;
@@ -545,7 +572,7 @@ enter-chat {
   display: flex
   flex-direction: column
   
-  gap: 0.5lh;
+  gap: var(--space-sm);
   align-items: center;
   justify-content: center;
   
@@ -556,7 +583,7 @@ enter-chat {
       display: flex
       flex-direction: column
       min-width: 30ch
-      gap: 0.25lh
+      gap: var(--space-xs)
     }
   }
 }
@@ -564,8 +591,8 @@ enter-chat {
 list-c > .item {
   display: flex;
   align-items: center;
-  gap: 0.5lh;
-  padding: 1lh;
+  gap: var(--space-sm);
+  padding: var(--space-md);
   flex-wrap: wrap
   transition: background 0.2s ease;
   border-radius: var(--border-rad)
@@ -577,7 +604,7 @@ list-c > .item {
 list-c > .item > .content {
   display: flex
   flex-direction: column
-  gap: 0.5lh;
+  gap: var(--space-sm);
   flex: 1;
   cursor: pointer;
 }
@@ -597,7 +624,7 @@ list-c > .item > .delete {
 enter-chat list-c > .item .profiles {
   display: flex;
   align-items: center;
-  gap: 0.5lh;
+  gap: var(--space-sm);
   overflow: auto
   align-self: flex-end
   position: relative
@@ -614,10 +641,10 @@ input[placeholder="ID"] {
 }
 
 request-c {
-  padding: 0.5lh;
+  padding: var(--space-sm);
   display: flex;
   flex-direction: column;
-  gap: 0.5lh;
+  gap: var(--space-sm);
   border-top-left-radius: var(--border-rad);
   border-top-right-radius: var(--border-rad);
   box-shadow: inset 1px 0px 0px 0px var(--mild-border-color),
@@ -651,7 +678,7 @@ request-c {
   footer {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.25lh;
+    gap: var(--space-xs);
   }
 }
 
@@ -690,27 +717,27 @@ message-c {
 
   width: 100%;
   max-width: 1200px;
-  padding: 1lh;
+  padding: var(--space-md);
 
-  gap: 0.5lh;
+  gap: var(--space-sm);
 
   > img.profile {
-    margin-right: 1lh
-    margin-bottom: 1lh
+    margin-right: var(--space-md)
+    margin-bottom: var(--space-md)
     float: left
   }
   > h3.name {
     display: block
-    padding-bottom: 0.5lh
+    padding-bottom: var(--space-sm)
   }
 
   > utils-c {
     width: 100%;
-    margin-top: 0.5lh;
+    margin-top: var(--space-sm);
     justify-content: flex-end;
     opacity: 0%;
     transition: opacity 0.2s
-    gap: 0.5lh;
+    gap: var(--space-sm);
     flex-wrap: wrap;
     * {
      height: 2lh;
@@ -719,12 +746,12 @@ message-c {
 
   > wrap-c {
     flex-wrap: nowrap;
-    gap: 1lh;
+    gap: var(--space-md);
   }
   article {
     display: flex;
     flex-direction: column;
-    gap: 0.5lh;
+    gap: var(--space-sm);
     flex-grow: 1;
     wrap-c {
       align-items: baseline;
@@ -739,6 +766,10 @@ message-c {
     line-height: 1.25lh;
   }
 }
+
+/* ========================================================================== */
+/* Rich text and object editor */
+/* ========================================================================== */
 
 @css {
   span.quote {
@@ -788,10 +819,10 @@ message-c {
 obj-c {
   display: flex
   flex-direction: column
-  gap: 0.25lh
+  gap: var(--space-xs)
   width: fit-content
   
-  padding: 0.5lh
+  padding: var(--space-sm)
   border-radius: var(--border-rad)
 
   > pair-c {
@@ -800,8 +831,8 @@ obj-c {
     align-items: flex-start
     gap: 1ch
     > key-c {
-      padding-top: 0.5lh
-      padding-bottom: 0.5lh
+      padding-top: var(--space-sm)
+      padding-bottom: var(--space-sm)
     }
     > key-c::after {
       content: ":"
@@ -826,7 +857,7 @@ pair-c:has(> obj-c) {
     font-weight: bold
   }
   > obj-c {
-    padding-left: 0.5lh
+    padding-left: var(--space-sm)
     box-shadow: inset 2px 0px 0px 0px var(--ui-color)
   }
 }
@@ -864,11 +895,15 @@ obj-editor .notice:not(:empty) {
 obj-editor {
   display: flex
   flex-direction: column
-  gap: 0.5lh
+  gap: var(--space-sm)
   max-width: 100%
   align-items: flex-end
 }
 
+
+/* ========================================================================== */
+/* Bubby cards and edit views */
+/* ========================================================================== */
 
 input[type="datetime-local"]{
   color: var(--weird) !important
@@ -889,8 +924,8 @@ bubbies-c {
 bubbies-c > list-c {
   display: flex
   flex-wrap: wrap
-  padding: 0.5lh
-  gap: 0.5lh
+  padding: var(--space-sm)
+  gap: var(--space-sm)
   flex-grow: 1
   > div {
     > img {
@@ -898,7 +933,7 @@ bubbies-c > list-c {
       aspect-ratio: 1/1
     }
     > div {
-      padding: 1lh
+      padding: var(--space-md)
       text-overflow: ellipsis
       overflow: clip
       text-align: center
@@ -908,14 +943,13 @@ bubbies-c > list-c {
     cursor: pointer
     display: flex
     flex-direction: column
-    width: 20ch
+    width: 18ch
     outline: 1px solid var(--mild-border-color)
     border-radius: var(--border-rad)
     
   }
   > div:hover {
     outline: 4px solid var(--border-color)
-    
   } 
 }
 
@@ -925,8 +959,8 @@ edit-chat, edit-bubby, llm-config, user-config {
   flex-direction: column
   align-items: center
 
-  padding: 0.5lh
-  gap: 0.5lh
+  padding: var(--space-sm)
+  gap: var(--space-sm)
 
   overflow: auto
 }
@@ -943,7 +977,7 @@ edit-bubby {
     width: 20ch
     display: flex
     flex-direction: column
-    gap: 0.5lh
+    gap: var(--space-sm)
     > img {
       width: 100%
     }
@@ -962,14 +996,18 @@ img.profile {
 }
 
 
+/* ========================================================================== */
+/* Shared page containers and final view rules */
+/* ========================================================================== */
+
 enter-chat, bubbies-c, llm-configs {
   display: flex
   flex-direction: column
   overflow: auto
-  gap: 0.5lh
+  gap: var(--space-sm)
   width: 100%
   height: 100%
-  padding: 0.5lh
+  padding: var(--space-sm)
   > list-c {
     width: 100%
     flex-grow: 1
@@ -986,7 +1024,7 @@ llm-config {
 }
 
 stat-c {
-  margin: 0.5lh
+  margin: var(--space-sm)
 }
 
 guide-c {
@@ -997,7 +1035,7 @@ guide-c {
   flex-direction: column
   align-items: center
   justify-content: center
-  gap: 1lh
-  padding: 0.5lh
+  gap: var(--space-md)
+  padding: var(--space-sm)
 }
 

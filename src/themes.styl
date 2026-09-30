@@ -1,3 +1,7 @@
+/* ========================================================================== */
+/* Font faces */
+/* ========================================================================== */
+
 @font-face {
   font-family: "DM Mono";
   src: local("DM Mono"), url(../fonts/DMMono-Regular.ttf) format("truetype");
@@ -34,6 +38,10 @@
 -----------
 */
 
+/* ========================================================================== */
+/* Shared palette and default theme */
+/* ========================================================================== */
+
 :root {
   --light: white;
   --dark: black;
@@ -48,9 +56,8 @@
 
 :root {
   
-  font-family: "SUIT", /* "Poppins",  */ sans-serif;
+  font-family: "SUIT", sans-serif;
   font-weight: 400;
-  /* letter-spacing: 0.08ch; */
 
   body {
     background-size: cover;
@@ -69,10 +76,14 @@
   --saturation-shift: 0;
   --lightness-shift: 0;
 
-  --border-rad: 0; //0.5lh;
+  --border-rad: 0;
 
 }
 
+
+/* ========================================================================== */
+/* Dark mode override */
+/* ========================================================================== */
 
 :root.dark {
   --ui-color: var(--light);
@@ -81,9 +92,14 @@
   caret-color: var(--light);
 }
 
+/* ========================================================================== */
+/* Theme variants */
+/* ========================================================================== */
+
 hsl2(hue, saturation, lightness)
   unquote("hsl(" + "calc(var(--hue-shift) + " + hue + ")," + saturation + "%," + lightness + "%" + ")")
 
+/* Cozy theme */
 :root.cozy {
 
   --light: hsl2(0, 20, 72);
@@ -109,10 +125,10 @@ hsl2(hue, saturation, lightness)
 }
 
 
+/* Parade theme */
 :root.parade {
   /* 
     iMessage type looking, pastel colorful.
-    The default theme.
   */
   --light: hsl(240, 14, 90);
   --dark: rgb(78, 54, 77);
@@ -132,12 +148,10 @@ hsl2(hue, saturation, lightness)
 
   --dir: var(--accent-2);
   --file: var(--accent);
-
-  /* filter: hue-rotate(310deg) saturate(0.75); */
-  /* filter: hue-rotate(100deg) contrast(0.92) invert(1); */
 }
 
 
+/* Pro theme */
 :root.pro {
   font-family: "DM Mono", monospace;
   font-weight: 400;
@@ -174,6 +188,7 @@ hsl2(hue, saturation, lightness)
   --file: var(--accent);
 }
 
+/* Font-focused themes */
 :root.artsy {
   font-family: "Baskervville";
   start-c.pretty {
@@ -191,6 +206,10 @@ hsl2(hue, saturation, lightness)
   font-family: "DM Sans", "Inconsolata", "SUIT", "SUIT Variable";
 }
 
+/* ========================================================================== */
+/* Glassy surface effect */
+/* ========================================================================== */
+
 @css {
   :root.glassy {
     main {
@@ -201,7 +220,7 @@ hsl2(hue, saturation, lightness)
       );
     }
     
-    input, button, select, *[contenteditable="true"], group-c, obj-c, bubbies-c > list-c > div, list-c > .item, guide-c {
+    input, button, select, *[contenteditable="true"], group-c, obj-c, list-c > *, guide-c {
       background: color-mix(
         in hsl,
         var(--bg-color),

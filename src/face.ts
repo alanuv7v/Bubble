@@ -244,7 +244,7 @@ async function render_chat_list (chats: Chat[]) {
     chats.map(async chat => {
       
       const bubbies = await get_chat_bubbies(chat.id)
-      const dom = await render_list_item(chat, edit_item, chats => render_item(chats, bubbies), delete_item)
+      const dom = await render_list_item(chat, chats => render_item(chats, bubbies), edit_item, delete_item)
       const bubby_images = await Promise.all(bubbies.map(async (bubby) => t.img({
         className: "profile",
         src: await get_img_src(`${bubby.id}.webp`, "assets/profile_fallback.webp"),
@@ -290,7 +290,7 @@ async function refresh_llm_config_list () {
   const delete_item = (c: LlmConfig) => delete_entry("llm_configs", c.id)
   const configs = await get_recent_entries("llm_configs", 0, 10)
   const children = await Promise.all(
-    configs.map(async config => await render_list_item(config, edit_item, render_item, delete_item))
+    configs.map(async config => await render_list_item(config, render_item, undefined, delete_item))
   )
   llm_config_list_c.replaceChildren(...children)
 }
