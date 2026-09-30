@@ -13,7 +13,7 @@ import { create_entries, create_entry, delete_entry, get_entry, query, update_en
 import { render, show_one_dom } from "./face.ts";
 import { nuke_db } from "./database.ts";
 import { instantiate, LlmParams } from "./definitions.ts";
-import { apply_theme } from "./theme.ts";
+import { apply_visual } from "./visual.ts";
 
 // DEBUG
 Object.entries({
@@ -54,7 +54,7 @@ try {
 
   // The worker and asset handle are per-page state; only default-data seeding is one-time.
   await db.init()
-  await apply_theme()
+  await apply_visual()
 
   if (was_ever_initialized !== "1") {
 

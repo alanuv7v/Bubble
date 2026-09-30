@@ -1,6 +1,7 @@
 export default {
-  theme: {
-    file: "",
+  visual: {
+    theme: ["dark", "cozy", "okay", "glassy"],
+    stylesheet: "",
     background: "",
   },
   chat: {

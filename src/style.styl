@@ -1058,7 +1058,7 @@ summary {
   cursor: pointer
 }
 
-user-config theme-c {
+user-config visual-c {
   width: 100%
   max-width: 60ch
   display: flex
@@ -1070,12 +1070,43 @@ user-config theme-c {
     flex-direction: column
     gap: var(--space-xs)
   }
+}
 
-  select {
-    width: 100%
+asset-picker {
+  display: inline-block
+  max-width: 100%
+
+  > section {
+    padding: var(--space-sm)
+    border: 1px solid var(--mild-border-color)
+    background: var(--bg-color)
+    display: flex
+    flex-direction: column
+    gap: var(--space-sm)
   }
 
-  > input[hidden] {
+  > section[hidden] {
     display: none
+  }
+
+  .files {
+    max-height: 24lh
+    overflow-y: auto
+  }
+
+  .file {
+    display: flex
+    align-items: center
+    gap: var(--space-sm)
+    > button:first-of-type {
+      flex: 1
+      text-align: left
+      overflow-wrap: anywhere
+    }
+    img {
+      width: 3lh
+      height: 3lh
+      object-fit: cover
+    }
   }
 }

@@ -215,9 +215,15 @@ export async function init() {
     await TEMP.user_config_handle.getFile(),
     (f: File) => f.text(),
     yaml.parse
-  ) as typeof user_config
+  ) as typeof user_config & { theme?: { file?: string, background?: string } }
 
   TEMP.user_config = merge(user_config, conf ?? {}) as typeof user_config
+  // Carry existing stylesheet and background choices into the visual settings.
+  if (conf?.theme) {
+    TEMP.user_config.visual.stylesheet = conf.visual?.stylesheet ?? conf.theme.file ?? ""
+    TEMP.user_config.visual.background = conf.visual?.background ?? conf.theme.background ?? ""
+  }
+  delete (TEMP.user_config as typeof user_config & { theme?: unknown }).theme
 
   return
 }

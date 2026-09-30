@@ -1,7 +1,5 @@
 import t from "./tags";
 import TEMP from "./TEMP";
-import { get_extension, get_pure_name } from "./utils/file_utils";
-import { pipe } from "./utils/pipe";
 
 export async function get_asset (name: string, folder?: string) {
   try {
@@ -69,46 +67,15 @@ async function convert_img(file: File|Blob, into: string, quality = 0.9): Promis
 }
 
 
-export function pick_and_save_image(
-  name?: string,
-  convert_into?: string,
-  quality = 0.9
-): Promise<File | null> {
-  return new Promise((resolve) => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = "image/*";
+export async function save_profile_image(file: File, id: string) {
+  const image = await convert_img(file, "webp")
+  if (!image) throw new Error("Could not read profile image")
+  await save_asset("", new File([image], `${id}.webp`, { type: "image/webp" }))
+}
 
-    input.oncancel = () => resolve(null);
-
-    input.onchange = async () => {
-      const raw_file = input.files?.[0];
-      if (!raw_file) return resolve(null);
-
-      const ext = convert_into ?? get_extension(raw_file.name) ?? "";
-      const base = name ?? get_pure_name(raw_file.name)
-      const filename = ext ? `${base}.${ext}` : base
-
-      let blob: Blob = raw_file
-      if (convert_into) {
-        const converted = await convert_img(raw_file, convert_into, quality);
-        if (!converted) return resolve(null);
-        blob = converted;
-      }
-
-      const file = new File([blob], filename, { type: blob.type || `image/${ext}` });
-      const root = TEMP.assets_dir_handle!;
-      const handle = await root.getFileHandle(filename, { create: true });
-      const writable = await handle.createWritable();
-
-      await writable.write(file);
-      await writable.close();
-
-      resolve(file);
-    };
-
-    input.click();
-  });
+export function is_image(name: string) {
+  return [".avif", ".bmp", ".gif", ".jpg", ".jpeg", ".png", ".svg", ".webp"]
+    .some((ext) => name.toLowerCase().endsWith(ext))
 }
 
 export function safe_img(name: string, fallback = "") {
@@ -123,9 +90,9 @@ export function safe_img(name: string, fallback = "") {
 }
 
 async function asset_dir(folder: string) {
-  const dir = await TEMP.assets_dir_handle?.getDirectoryHandle(folder, { create: true })
-  if (!dir) throw new Error("Assets directory is not initialized")
-  return dir
+  const root = TEMP.assets_dir_handle
+  if (!root) throw new Error("Assets directory is not initialized")
+  return folder ? root.getDirectoryHandle(folder, { create: true }) : root
 }
 
 export async function list_assets(folder: string) {
@@ -143,6 +110,10 @@ export async function save_asset(folder: string, file: File) {
   const writer = await handle.createWritable()
   await writer.write(file)
   await writer.close()
+}
+
+export async function delete_asset(folder: string, name: string) {
+  await (await asset_dir(folder)).removeEntry(name)
 }
 
 export async function rename_asset(old_name: string, new_name: string): Promise<() => Promise<void>> {

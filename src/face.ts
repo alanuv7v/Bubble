@@ -1,13 +1,14 @@
 import TEMP from "./TEMP.ts";
 import yaml from "yaml";
-import { theme_controls } from "./theme.ts";
+import { visual_controls } from "./visual.ts";
 
 import t from "./tags.ts";
 import { create_entry, delete_entry, get_entry, load_chat, send, resume_last_reply, update_entry, update_chat_cast, refresh_chat_bubby_selects, get_chat_bubby_ids, get_chat_bubbies, get_recent_entries } from "./chat.ts";
 import { Bubby, Chat, instantiate, LlmConfig, LlmParams } from "./definitions.ts";
 import obj_editor from "./ui_modules/obj_editor.ts";
 import { user_config_def } from "./user_config.ts";
-import { get_img_src, pick_and_save_image, rename_asset } from "./assets.ts";
+import { get_img_src, is_image, rename_asset, save_profile_image } from "./assets.ts";
+import asset_picker from "./ui_modules/asset_picker";
 import multi_select_picker from "./ui_modules/multi_select_picker.ts";
 import render_list_item from "./ui_modules/render_list.ts";
 
@@ -328,21 +329,27 @@ async function render_bubby_list (bubbies: Bubby[]) {
 }
 
 async function render_bubby_config (bubby: Bubby) {
-  
+  const fallback = "assets/profile_fallback.webp"
+  const profile_src = await get_img_src(`${bubby.id}.webp`, fallback)
   const img = t.img({
     className: "profile",
-    src: await get_img_src(bubby.id + ".webp", "assets/profile_fallback.webp"),
+    src: profile_src,
   }) as HTMLImageElement
 
   edit_bubby_c.replaceChildren(
     t.div(
       img,
-      t.button({
-        innerText: "Set profile image",
-        onclick: async () => {
-          await pick_and_save_image(bubby.id, "webp", 0.9)
-          img.src = await get_img_src(bubby.id + ".webp", "assets/profile_fallback.webp")
-        }
+      asset_picker({
+        title: "Profile image", folder: "", accept: "image/*",
+        selected: profile_src === fallback ? "" : `${bubby.id}.webp`,
+        show: is_image,
+        on_select: async (file) => {
+          if (file) await save_profile_image(file, bubby.id)
+          img.src = await get_img_src(`${bubby.id}.webp`, fallback)
+          await render_bubby_list(await get_recent_entries("bubbies", 0, 10))
+          return file ? `${bubby.id}.webp` : ""
+        },
+        on_delete: async () => render_bubby_list(await get_recent_entries("bubbies", 0, 10))
       }),
     ),
     obj_editor(Bubby, bubby, {
@@ -596,10 +603,10 @@ const refresh: Partial<Record<keyof typeof nav, () => void | Promise<void>>> = {
     render_bubby_config(bubby)
   },
   async "User Config" () {
-    const theme = await theme_controls()
-    // Theme has dedicated controls, so keep its filenames out of the generic editor.
+    const visual = visual_controls()
+    // Visual settings have dedicated controls, so keep them out of the generic editor.
     const config_for_editor = { ...TEMP.user_config }
-    delete (config_for_editor as Partial<typeof TEMP.user_config>).theme
+    delete (config_for_editor as Partial<typeof TEMP.user_config>).visual
     const e = obj_editor(user_config_def, config_for_editor, {
       async save() {
         return save_action(async () => {
@@ -609,7 +616,7 @@ const refresh: Partial<Record<keyof typeof nav, () => void | Promise<void>>> = {
         })
       },
     }) as HTMLDivElement
-    user_config_c.replaceChildren(theme, e)
+    user_config_c.replaceChildren(visual, e)
   },
   async "LLM Config" () {
     if (!TEMP.edited_llm_config_id) return
