@@ -577,6 +577,7 @@ enter-chat {
   justify-content: center;
   
   list-c > .item > .content {
+    flex-direction: column
     flex-wrap: wrap
     > .info {
       flex-grow: 1
@@ -596,14 +597,22 @@ list-c > .item {
   flex-wrap: wrap
   transition: background 0.2s ease;
   border-radius: var(--border-rad)
-  group-c {
-    width fit-content
+  flex-grow: 1
+  .content {
+    display: flex
+    align-items: baseline
+    > *:first-child {
+      flex-grow: 1
+    } 
+    group-c {
+      width: fit-content
+      height: fit-content
+    }
   }
 }
 
 list-c > .item > .content {
   display: flex
-  flex-direction: column
   gap: var(--space-sm);
   flex: 1;
   cursor: pointer;
@@ -1037,5 +1046,36 @@ guide-c {
   justify-content: center
   gap: var(--space-md)
   padding: var(--space-sm)
+  white-space: break-spaces
+}
+details {
+  max-width: 40ch
+  > * {
+    padding: 0.5lh
+  }
+}
+summary {
+  cursor: pointer
 }
 
+user-config theme-c {
+  width: 100%
+  max-width: 60ch
+  display: flex
+  flex-direction: column
+  gap: var(--space-sm)
+
+  label {
+    display: flex
+    flex-direction: column
+    gap: var(--space-xs)
+  }
+
+  select {
+    width: 100%
+  }
+
+  > input[hidden] {
+    display: none
+  }
+}

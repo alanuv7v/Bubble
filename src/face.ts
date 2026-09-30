@@ -1,14 +1,15 @@
 import TEMP from "./TEMP.ts";
 import yaml from "yaml";
+import { theme_controls } from "./theme.ts";
 
 import t from "./tags.ts";
 import { create_entry, delete_entry, get_entry, load_chat, send, resume_last_reply, update_entry, update_chat_cast, refresh_chat_bubby_selects, get_chat_bubby_ids, get_chat_bubbies, get_recent_entries } from "./chat.ts";
 import { Bubby, Chat, instantiate, LlmConfig, LlmParams } from "./definitions.ts";
-import obj_editor from "./ui_components/obj_editor.ts";
+import obj_editor from "./ui_modules/obj_editor.ts";
 import { user_config_def } from "./user_config.ts";
 import { get_img_src, pick_and_save_image, rename_asset } from "./assets.ts";
-import multi_select_picker from "./ui_components/multi_select_picker.ts";
-import render_list_item from "./ui_components/render_list.ts";
+import multi_select_picker from "./ui_modules/multi_select_picker.ts";
+import render_list_item from "./ui_modules/render_list.ts";
 
 
 const chat_list_c = t.list_c()
@@ -281,12 +282,11 @@ async function refresh_llm_config_list () {
     show_one_dom("LLM Config")
   }
   const render_item = (c: LlmConfig) => t.div({
-    innerText: c.name,
     onclick: () => {
       TEMP.edited_llm_config_id = c.id
       show_one_dom("LLM Config")
     }
-  })
+  }, t.div(c.name))
   const delete_item = (c: LlmConfig) => delete_entry("llm_configs", c.id)
   const configs = await get_recent_entries("llm_configs", 0, 10)
   const children = await Promise.all(
@@ -595,8 +595,12 @@ const refresh: Partial<Record<keyof typeof nav, () => void | Promise<void>>> = {
     const bubby = (await get_entry("bubbies", TEMP.edited_bubby_id))!
     render_bubby_config(bubby)
   },
-  "User Config" () {
-    const e = obj_editor(user_config_def, TEMP.user_config, {
+  async "User Config" () {
+    const theme = await theme_controls()
+    // Theme has dedicated controls, so keep its filenames out of the generic editor.
+    const config_for_editor = { ...TEMP.user_config }
+    delete (config_for_editor as Partial<typeof TEMP.user_config>).theme
+    const e = obj_editor(user_config_def, config_for_editor, {
       async save() {
         return save_action(async () => {
           const writer = await TEMP.user_config_handle?.createWritable()
@@ -605,7 +609,7 @@ const refresh: Partial<Record<keyof typeof nav, () => void | Promise<void>>> = {
         })
       },
     }) as HTMLDivElement
-    user_config_c.replaceChildren(e)
+    user_config_c.replaceChildren(theme, e)
   },
   async "LLM Config" () {
     if (!TEMP.edited_llm_config_id) return
@@ -637,6 +641,7 @@ export async function render() {
         "Chat",
         "Bubbies",
         "LLM Configs",
+        "User Config",
         "Controls",
         "Guide"
       ].map((title) => t.button({

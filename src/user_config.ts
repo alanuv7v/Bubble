@@ -1,4 +1,8 @@
 export default {
+  theme: {
+    file: "",
+    background: "",
+  },
   chat: {
     visual: {
       render_message_as_markdown: true,

@@ -8,7 +8,7 @@ import format_displayed_msg from "./utils/format_displayed_msg";
 import { AsEntry, exec_sql } from "./database";
 import { merge } from "merge-anything"
 import { get_img_src } from "./assets";
-import confirm_btn from "./ui_components/confirm_btn";
+import confirm_btn from "./ui_modules/confirm_btn";
 
 
 export type TableEntryMap = {
@@ -720,7 +720,7 @@ async function message_controller (bubby: Bubby, chat: Chat, message: Message, t
   : textgens[message.picked]?.content ?? message.content ?? ""
 
   const content_c = t.content_c({
-    innerText: picked_content
+    innerHTML: format_displayed_msg(picked_content)
   })
   const elem = t.message_c(
     t.img({

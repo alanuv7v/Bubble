@@ -3,9 +3,11 @@ import TEMP from "./TEMP";
 import { get_extension, get_pure_name } from "./utils/file_utils";
 import { pipe } from "./utils/pipe";
 
-export async function get_asset (name: string) {
+export async function get_asset (name: string, folder?: string) {
   try {
-    const file_handle = await TEMP.assets_dir_handle?.getFileHandle(name)
+    const root = TEMP.assets_dir_handle
+    const dir = folder ? await root?.getDirectoryHandle(folder, { create: true }) : root
+    const file_handle = await dir?.getFileHandle(name)
     return await file_handle?.getFile()
   }
   catch (e) {
@@ -118,6 +120,29 @@ export function safe_img(name: string, fallback = "") {
     t.source({srcset: `${name}.gif`}),
     t.source({srcset: `${fallback}`}),
   )
+}
+
+async function asset_dir(folder: string) {
+  const dir = await TEMP.assets_dir_handle?.getDirectoryHandle(folder, { create: true })
+  if (!dir) throw new Error("Assets directory is not initialized")
+  return dir
+}
+
+export async function list_assets(folder: string) {
+  const dir = await asset_dir(folder)
+  const names: string[] = []
+  for await (const handle of dir.values()) {
+    if (handle.kind === "file") names.push(handle.name)
+  }
+  return names.sort((a, b) => a.localeCompare(b))
+}
+
+export async function save_asset(folder: string, file: File) {
+  const dir = await asset_dir(folder)
+  const handle = await dir.getFileHandle(file.name, { create: true })
+  const writer = await handle.createWritable()
+  await writer.write(file)
+  await writer.close()
 }
 
 export async function rename_asset(old_name: string, new_name: string): Promise<() => Promise<void>> {
