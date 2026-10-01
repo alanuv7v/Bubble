@@ -1,0 +1,38 @@
+:root {
+  
+  font-family: "SUIT", sans-serif;
+  font-weight: 400;
+
+  body {
+    background-size: cover;
+    background-position: center;
+  }
+  
+  --border-color: rgb(198, 59, 59);
+  --mild-border-color: rgb(234, 96, 96);
+  --active-bg-color: rgb(219, 188, 188);
+  --ui-color: var(--dark);
+  --bg-color: var(--light);
+  --button-grad: var(--light-grad);
+  --error: rgb(215, 19, 81);
+  --accent: teal
+  
+  --alert: var(--accent);
+  --quote: var(--accent);
+  --value: var(--ui-color);
+  --text: var(--value);
+  --obj: var(--accent);
+  --dir: var(--accent-2);
+  --file: var(--accent);
+
+  --hue-shift: 0;
+  --saturation-shift: 0;
+  --lightness-shift: 0;
+
+  --border-rad: 0;
+
+}
+:root.special {
+  font-family: serif;
+  --border-color: rgb(77, 155, 224);
+}

@@ -14,7 +14,10 @@ export default async function render_list_item<T>(
 
   const edit_button = edit_item ? t.button({
     innerText: "Edit",
-    onclick: () => edit_item(item)
+    onclick: (event: MouseEvent) => {
+      event.stopPropagation()
+      edit_item(item)
+    }
   }) : undefined
   const delete_button = delete_item ? confirm_btn("X", () => {
     delete_button!.disabled = true

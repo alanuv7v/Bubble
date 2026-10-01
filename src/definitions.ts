@@ -170,7 +170,6 @@ export type Message = Omit<CoreMessage, "content"> & {
   id: Id
   content: string|null // null if role === "assistant"
   chat_id: Id
-  speaker_id: Id
   speaker_ids: Id[]
   listener_id: Id
   created_at: number // UNIX timestamp

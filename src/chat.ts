@@ -99,15 +99,15 @@ export async function get_recent_messages(
   start: number,
   end: number
 ) {
-  const messages = await (exec_sql(
+  const messages = await query("messages",
     `SELECT * FROM messages 
       WHERE chat_id = ? 
       ORDER BY created_at DESC, rowid DESC
       LIMIT ? 
       OFFSET ?`,
     [chat_id, end - start, start]
-  )) as unknown as Message[]
-  return messages.map((message) => ensure_message_speaker_ids(message as Message)).toReversed()
+  )
+  return messages.toReversed()
 }
 
 export async function get_messages_before(
@@ -115,18 +115,18 @@ export async function get_messages_before(
   last_created_at: number,
   limit = 50
 ) {
-  const messages = await exec_sql(
+  const messages = await query("messages",
     `SELECT * FROM messages
       WHERE chat_id = ? AND created_at < ?
       ORDER BY created_at DESC, rowid DESC
       LIMIT ?`,
     [chat_id, last_created_at, limit]
-  ) as unknown as Message[]
-  return messages.map((message) => ensure_message_speaker_ids(message as Message)).toReversed()
+  )
+  return messages.toReversed()
 }
 
 async function get_messages_before_message(message: Message, limit = 50) {
-  const messages = await exec_sql(
+  const messages = await query("messages",
     `SELECT * FROM messages
       WHERE chat_id = ? AND (
         created_at < (SELECT created_at FROM messages WHERE id = ?)
@@ -136,11 +136,11 @@ async function get_messages_before_message(message: Message, limit = 50) {
       ORDER BY created_at DESC, rowid DESC
       LIMIT ?`,
     [message.chat_id, message.id, message.id, message.id, limit]
-  ) as unknown as Message[]
-  return messages.map((message) => ensure_message_speaker_ids(message as Message)).toReversed()
+  )
+  return messages.toReversed()
 }
 
-function parse_id_list(value: unknown, fallback_id?: Id): Id[] {
+function parse_id_list(value: unknown): Id[] {
   // Accept stored JSON or runtime arrays, and keep only unique, non-empty IDs.
   let parsed_value: unknown = value
   if (typeof parsed_value === "string") {
@@ -148,14 +148,7 @@ function parse_id_list(value: unknown, fallback_id?: Id): Id[] {
   }
   if (!Array.isArray(parsed_value)) parsed_value = []
   const ids = [...new Set((parsed_value as unknown[]).filter((id): id is Id => typeof id === "string" && id.length > 0))]
-  if (!ids.length && fallback_id) ids.push(fallback_id)
   return ids
-}
-
-function ensure_message_speaker_ids(message: Message): Message {
-  // Older messages have one speaker_id instead of a speaker_ids list.
-  message.speaker_ids = parse_id_list(message.speaker_ids, message.speaker_id)
-  return message
 }
 
 export async function get_entry<K extends TableName>(table: K, id: Id) {
@@ -383,17 +376,22 @@ DELETE FROM ${table} WHERE ${owner_column} = ?`, [owner_id])
   const insert_values = item_ids.map(() => '(?, ?)').join(',')
 
   const delete_sql = `--sql
-BEGIN TRANSACTION;
 DELETE FROM ${table} WHERE ${owner_column} = ? AND ${item_column} NOT IN (${item_placeholders});`
   const delete_params = [owner_id, ...item_ids]
   
   const insert_sql = `--sql
-INSERT OR IGNORE INTO ${table} (${owner_column}, ${item_column}) VALUES ${insert_values};
-COMMIT;`
+INSERT OR IGNORE INTO ${table} (${owner_column}, ${item_column}) VALUES ${insert_values};`
   const insert_params = item_ids.flatMap((id) => [owner_id, id])
 
-  await exec_sql(delete_sql, delete_params)
-  await exec_sql(insert_sql, insert_params)
+  await exec_sql("BEGIN TRANSACTION")
+  try {
+    await exec_sql(delete_sql, delete_params)
+    await exec_sql(insert_sql, insert_params)
+    await exec_sql("COMMIT")
+  } catch (error) {
+    await exec_sql("ROLLBACK").catch(() => {})
+    throw error
+  }
 }
 
 export async function get_junction_entries<K extends JunctionTableName>(
@@ -593,10 +591,10 @@ export async function gen_text_req (
 
   const is_group_chat = (await get_chat_bubby_ids(gen_context.chat.id)).length > 2
   const needs_speaker_labels = is_group_chat || history.some((message) =>
-    ensure_message_speaker_ids(message).speaker_ids.length > 1
+    message.speaker_ids.length > 1
   )
   const speakers = needs_speaker_labels
-    ? await get_entries("bubbies", [...new Set(history.flatMap((message) => ensure_message_speaker_ids(message).speaker_ids))])
+    ? await get_entries("bubbies", [...new Set(history.flatMap((message) => message.speaker_ids))])
     : []
   const speaker_names = new Map<Id, string>(
     speakers.map((speaker): [Id, string] => [speaker.id, speaker.name])
@@ -621,7 +619,7 @@ export async function gen_text_req (
       // Assistant role alone loses who spoke in a group, so label history with its speaker IDs.
       // Group history needs speaker labels, but generated labels should not be doubled.
       const has_speaker_label = message.role === "assistant" && speaker_label !== undefined &&
-        ensure_message_speaker_ids(message).speaker_ids.some((id) => [id, speaker_names.get(id)]
+        message.speaker_ids.some((id) => [id, speaker_names.get(id)]
           .some((name) => name?.toLocaleLowerCase() === speaker_label))
       if ((is_group_chat || message.speaker_ids.length > 1) && !has_speaker_label) {
         const display_names = message.speaker_ids.map((id) => (speaker_names.get(id) ?? id)
@@ -656,13 +654,14 @@ export async function gen_text_req (
     if (merged_config[key] === undefined) delete merged_config[key]
   }
 
-  const api_key = chat_llm_config.api_key ?? bubby_llm_config.api_key
+  // Blank chat credentials should fall back to the listener's config.
+  const api_key = chat_llm_config.api_key?.trim() || bubby_llm_config.api_key?.trim()
   if (!api_key) {
     throw Error("API key is not configured.")
   }
   
-  const api_url = chat_llm_config.api_url ?? 
-    bubby_llm_config.api_url ?? 
+  const api_url = chat_llm_config.api_url?.trim() ||
+    bubby_llm_config.api_url?.trim() ||
     "https://openrouter.ai/api/v1/chat/completions"
   
   // A shared call needs each selected listener's identity and a distinct reaction.
@@ -706,7 +705,6 @@ async function delete_message(controller: MessageController) {
 }
 
 async function message_controller (bubby: Bubby, chat: Chat, message: Message, textgens: TextGen[]) {
-  ensure_message_speaker_ids(message)
   const speaker_entries = await get_entries("bubbies", message.speaker_ids)
   const speakers = message.speaker_ids
     .map((id) => speaker_entries.find((speaker) => speaker.id === id))
@@ -1009,7 +1007,7 @@ export async function resume_last_reply() {
   if (gen_rows.length > 0) return false
 
   const original_speaker = await get_entry("bubbies", message.listener_id)
-  const reply_character = await get_entry("bubbies", ensure_message_speaker_ids(message).speaker_ids[0])
+  const reply_character = await get_entry("bubbies", message.speaker_ids[0])
   if (!original_speaker || !reply_character) return false
 
   const controller = message_controllers.get(message.id) ?? await message_controller(
@@ -1052,7 +1050,6 @@ export async function send() {
     content: prompt,
     chat_id: TEMP.chat.id!,
     id: crypto.randomUUID(),
-    speaker_id,
     speaker_ids: [speaker_id],
     listener_id: first_listener_id,
     created_at: Temporal.Now.instant().epochMilliseconds,
@@ -1064,7 +1061,6 @@ export async function send() {
     content: null,
     chat_id: TEMP.chat.id!,
     id: crypto.randomUUID(),
-    speaker_id: first_listener_id,
     speaker_ids: listener_ids,
     listener_id: speaker_id,
     created_at: Temporal.Now.instant().epochMilliseconds,
@@ -1112,30 +1108,14 @@ export async function load_chat(chat: Chat) {
 
   /* SHOW MESSAGES */
   const history = await get_recent_messages(chat.id, 0, 20)
-  const chat_speaker = TEMP.chat.speaker_id ? await get_entry("bubbies", TEMP.chat.speaker_id) : null
-  const chat_listener = TEMP.chat.listener_ids![0] ? await get_entry("bubbies", TEMP.chat.listener_ids![0]) : null
-
-  // Repair messages saved with the visible dropdown placeholder labels as IDs.
-  if (chat_speaker && chat_listener) {
-    for (const message of history) {
-      const has_placeholder_id = [message.speaker_id, message.listener_id]
-        .some((id) => id === "Speaker" || id === "Listener")
-      if (!has_placeholder_id) continue
-      const speaker_id = message.role === "user" ? TEMP.chat.speaker_id! : chat_listener.id
-      const listener_id = message.role === "user" ? chat_listener.id : TEMP.chat.speaker_id!
-      await update_entry("messages", message.id, { speaker_id, speaker_ids: [speaker_id], listener_id })
-      message.speaker_id = speaker_id
-      message.speaker_ids = [speaker_id]
-      message.listener_id = listener_id
-    }
-  }
 
   const message_elements: HTMLElement[] = []
 
   for (const message of history) {
-    const speaker = await get_entry("bubbies", message.speaker_id)
+    const speaker_id = message.speaker_ids[0]
+    const speaker = await get_entry("bubbies", speaker_id)
     if (!speaker) {
-      console.log(`Speaker of ID ${message.speaker_id} does not exist!`)
+      console.log(`Speaker of ID ${speaker_id} does not exist!`)
       const err = t.message_c(
         { className: "error" },
         t.img({
@@ -1143,7 +1123,7 @@ export async function load_chat(chat: Chat) {
           src: "assets/profile_fallback.webp"
         }),
         t.content_c({
-          innerText: `<Speaker of ID ${message.speaker_id} does not exist!>`
+          innerText: `<Speaker of ID ${speaker_id} does not exist!>`
         })
       )
       message_elements.push(err)

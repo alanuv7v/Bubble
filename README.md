@@ -17,4 +17,10 @@ To run the browser version:
 vite
 ```
 
-Fully independent desktop version and web-hosted versions are work in progress.
+To build the web app:
+```bash
+pnpm build
+```
+Upload the resulting `dist` folder using Cloudflare Pages' Direct Upload. It includes `_headers`, which enables SQLite's browser storage.
+
+The Neutralino desktop build stores `bubble.sqlite`, `user_config.yaml`, and assets in the user's application data directory. Run `pnpm desktop:prepare` before packaging to copy the SQLite extension's prebuilt binary.

@@ -42,19 +42,18 @@ console.log("%cWelcom to Bubble🫧", "color: skyblue");
 
 try {
   
-  q("main").append(
-    ...(await render())
-  )
-  
   let was_ever_initialized: string|null = null
-
-  if (TEMP.backbone === "OPFS") {
-    was_ever_initialized = localStorage.getItem("v")
-  }
 
   // The worker and asset handle are per-page state; only default-data seeding is one-time.
   await db.init()
   await apply_visual()
+
+  if (TEMP.backbone === "Neutralino") {
+    const version = await db.exec_sql<{ user_version: number }>("PRAGMA user_version")
+    was_ever_initialized = version[0]?.user_version === 1 ? "1" : null
+  } else {
+    was_ever_initialized = localStorage.getItem("v")
+  }
 
   if (was_ever_initialized !== "1") {
 
@@ -109,11 +108,14 @@ try {
 
   await sync_chat_bubbies("First Chat", ["Ethan", "Angelica"])
   
-    localStorage.setItem("v", "1")
+    if (TEMP.backbone === "Neutralino") await db.exec_sql("PRAGMA user_version = 1")
+    else localStorage.setItem("v", "1")
   }
 
 
-  show_one_dom("Enter")
+  // Mount and select the first screen together, so hidden panels never flash during startup.
+  q("main").replaceChildren(...await render())
+  show_one_dom("Chats")
   
 } catch (e) {
   const err = e as Error

@@ -4,6 +4,8 @@ import { pipe } from "./utils/pipe"
 import yaml from "yaml"
 import user_config from "./user_config"
 import { merge } from "merge-anything"
+import Neutralino from "@neutralinojs/lib"
+import { data_path, native_batch, native_sql, start_native_db } from "./native_db"
 
 const create_tables_sql = `--sql
 PRAGMA foreign_keys = ON;
@@ -47,7 +49,6 @@ CREATE TABLE IF NOT EXISTS messages (
   role TEXT NOT NULL,
   content TEXT DEFAULT NULL,
   chat_id TEXT NOT NULL,
-  speaker_id TEXT NOT NULL,
   speaker_ids TEXT NOT NULL DEFAULT '[]',
   listener_id TEXT NOT NULL,
   created_at INTEGER NOT NULL,
@@ -93,8 +94,6 @@ CREATE TABLE IF NOT EXISTS chat_bubbies (
 CREATE INDEX IF NOT EXISTS idx_chat_bubbies ON chat_bubbies(bubby_id);
 CREATE INDEX IF NOT EXISTS idx_bubby_chats ON chat_bubbies(bubby_id, chat_id);
 
-INSERT OR IGNORE INTO chat_bubbies (chat_id, bubby_id)
-  SELECT id, speaker_id FROM chats WHERE speaker_id IS NOT NULL;
 CREATE TABLE IF NOT EXISTS chat_libraries (
   chat_id TEXT NOT NULL,
   library_id TEXT NOT NULL,
@@ -116,114 +115,58 @@ CREATE INDEX IF NOT EXISTS idx_library_prompt ON library_prompts(prompt_id);
 CREATE INDEX IF NOT EXISTS idx_prompt_libraries ON library_prompts(prompt_id, library_id);
 `
 
-// Nah I'm just using junction tables...
-export const init_sql = create_tables_sql // + create_triggers_sql
+export const init_sql = create_tables_sql
 
 
 export async function init() {
-  TEMP.worker = new Worker(
-    new URL('./worker.ts', import.meta.url),
-    { type: 'module' }
-  )
+  if (TEMP.backbone === "Neutralino") {
+    await start_native_db()
+  } else {
+    TEMP.worker = new Worker(
+      new URL('./worker.ts', import.meta.url),
+      { type: 'module' }
+    )
 
-  TEMP.worker.onmessage = (e) => {
-    const { id, res, err } = e.data
-    const req = TEMP.db_pending!.get(id)
-    if (!req) return
-    TEMP.db_pending!.delete(id)
-    err ? req.reject(new Error(err)) : req.resolve(res)
-  }
-
-  TEMP.worker.onerror = (e) => {
-    console.log('Worker crash:', e.message)
-    for (const req of TEMP.db_pending!.values()) {
-      req.reject(new Error(e.message || 'Database worker crashed'))
+    TEMP.worker.onmessage = (e) => {
+      const { id, res, err } = e.data
+      const req = TEMP.db_pending!.get(id)
+      if (!req) return
+      TEMP.db_pending!.delete(id)
+      err ? req.reject(new Error(err)) : req.resolve(res)
     }
-    TEMP.db_pending!.clear()
-  }
 
-  await exec_sql(init_sql)
-
-  // Add JSON-backed group cast columns to databases created by older versions.
-  const ensure_column = async (table: string, column: string, definition: string) => {
-    const columns = await exec_sql<{ name: string }>(`PRAGMA table_info(${table})`)
-    if (!columns.some((entry) => entry.name === column)) {
-      await exec_sql(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
+    TEMP.worker.onerror = (e) => {
+      console.log('Worker crash:', e.message)
+      for (const req of TEMP.db_pending!.values()) {
+        req.reject(new Error(e.message || 'Database worker crashed'))
+      }
+      TEMP.db_pending!.clear()
     }
   }
-  await ensure_column("chats", "listener_ids", "TEXT NOT NULL DEFAULT '[]'")
-  await ensure_column("messages", "speaker_ids", "TEXT NOT NULL DEFAULT '[]'")
 
-  const chat_columns = await exec_sql<{ name: string }>("PRAGMA table_info(chats)")
-  const has_legacy_listener_id = chat_columns.some((entry) => entry.name === "listener_id")
-  // Fold the old single listener into the JSON list before removing that column.
-  const chats_to_migrate = await exec_sql<{ id: string, listener_id: string | null, listener_ids: string }>(
-    `SELECT id, ${has_legacy_listener_id ? "listener_id" : "NULL AS listener_id"}, listener_ids FROM chats`
-  )
-  for (const chat of chats_to_migrate) {
-    let listener_ids: string[] = []
-    try { listener_ids = JSON.parse(chat.listener_ids || "[]") } catch { listener_ids = [] }
-    if (!listener_ids.length && chat.listener_id) listener_ids = [chat.listener_id]
-    listener_ids = [...new Set(listener_ids.filter((id) => typeof id === "string" && id.length > 0))]
-    if (chat.listener_id && !listener_ids.includes(chat.listener_id)) listener_ids.push(chat.listener_id)
-    await exec_sql("UPDATE chats SET listener_ids = ? WHERE id = ?", [JSON.stringify(listener_ids), chat.id])
-    for (const bubby_id of listener_ids) {
-      await exec_sql("INSERT OR IGNORE INTO chat_bubbies (chat_id, bubby_id) SELECT ?, id FROM bubbies WHERE id = ?", [chat.id, bubby_id])
-    }
-  }
-  if (has_legacy_listener_id) {
-    // SQLite cannot drop this referenced column directly; rebuild chats while preserving its rows.
-    await exec_sql("PRAGMA foreign_keys = OFF")
-    await exec_sql("BEGIN TRANSACTION")
+  if (TEMP.backbone === "Neutralino") await native_batch(init_sql)
+  else await exec_sql(init_sql)
+
+  let saved = ""
+  if (TEMP.backbone === "Neutralino") {
+    const path = data_path() + "/user_config.yaml"
     try {
-      await exec_sql(`CREATE TABLE chats_new (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL UNIQUE DEFAULT 'New Chat',
-        speaker_id TEXT DEFAULT NULL,
-        listener_ids TEXT NOT NULL DEFAULT '[]',
-        created_at INTEGER NOT NULL,
-        last_use_at INTEGER DEFAULT NULL,
-        llm_config_id TEXT DEFAULT NULL,
-        FOREIGN KEY(speaker_id) REFERENCES bubbies(id) ON DELETE SET NULL,
-        FOREIGN KEY(llm_config_id) REFERENCES llm_configs(id) ON DELETE SET NULL
-      )`)
-      await exec_sql(`INSERT INTO chats_new (id, name, speaker_id, listener_ids, created_at, last_use_at, llm_config_id)
-        SELECT id, name, speaker_id, listener_ids, created_at, last_use_at, llm_config_id FROM chats`)
-      await exec_sql("DROP TABLE chats")
-      await exec_sql("ALTER TABLE chats_new RENAME TO chats")
-      await exec_sql("CREATE UNIQUE INDEX IF NOT EXISTS idx_chats_name ON chats(name)")
-      await exec_sql("COMMIT")
-    } catch (e) {
-      await exec_sql("ROLLBACK").catch(() => {})
-      throw e
-    } finally {
-      await exec_sql("PRAGMA foreign_keys = ON")
+      await Neutralino.filesystem.getStats(path)
+      saved = await Neutralino.filesystem.readFile(path)
+    } catch (error) {
+      // A new installation has no config file yet.
+      if ((error as any).code !== "NE_FS_NOPATHE") throw error
     }
+  } else {
+    // OPFS
+    TEMP.opfs_root_handle = await navigator.storage.getDirectory()
+    TEMP.user_config_handle = await TEMP.opfs_root_handle.getFileHandle("user_config.yaml", { create: true })
+    TEMP.assets_dir_handle = await TEMP.opfs_root_handle.getDirectoryHandle("assets", { create: true })
+    saved = await pipe(await TEMP.user_config_handle.getFile(), (f: File) => f.text())
   }
-  const messages_to_migrate = await exec_sql<{ id: string, speaker_id: string, speaker_ids: string }>(
-    "SELECT id, speaker_id, speaker_ids FROM messages WHERE speaker_id IS NOT NULL AND speaker_ids = '[]'"
-  )
-  for (const message of messages_to_migrate) {
-    await exec_sql("UPDATE messages SET speaker_ids = ? WHERE id = ?", [JSON.stringify([message.speaker_id]), message.id])
-  }
-
-  TEMP.opfs_root_handle = await navigator.storage.getDirectory()
-  TEMP.user_config_handle = await TEMP.opfs_root_handle.getFileHandle("user_config.yaml", { create: true })
-  TEMP.assets_dir_handle = await TEMP.opfs_root_handle.getDirectoryHandle("assets", { create: true })
-
-  const conf = await pipe(
-    await TEMP.user_config_handle.getFile(),
-    (f: File) => f.text(),
-    yaml.parse
-  ) as typeof user_config & { theme?: { file?: string, background?: string } }
+  const conf = yaml.parse(saved) as typeof user_config
 
   TEMP.user_config = merge(user_config, conf ?? {}) as typeof user_config
-  // Carry existing stylesheet and background choices into the visual settings.
-  if (conf?.theme) {
-    TEMP.user_config.visual.stylesheet = conf.visual?.stylesheet ?? conf.theme.file ?? ""
-    TEMP.user_config.visual.background = conf.visual?.background ?? conf.theme.background ?? ""
-  }
-  delete (TEMP.user_config as typeof user_config & { theme?: unknown }).theme
 
   return
 }
@@ -233,9 +176,16 @@ export type AsEntry<T> = {
   [K in keyof T]: NonNullable<T[K]> extends object ? string : T[K]
 }
 
-export function exec_sql<T = any>(command_sql: string, bind: BindingSpec = [], rowMode = "object", returnValue = "resultRows"): Promise<AsEntry<T>[]> {
+export function exec_sql<T = any>(
+  command_sql: string, 
+  bind: BindingSpec = [], 
+  rowMode = "object", 
+  returnValue = "resultRows"
+): Promise<AsEntry<T>[]> {
 
-  if (!TEMP.worker) init()
+  if (TEMP.backbone === "Neutralino") {
+    return native_sql(command_sql, bind as unknown[], rowMode) as Promise<AsEntry<T>[]>
+  }
 
   return new Promise((resolve, reject) => {
     const id = crypto.randomUUID()
@@ -245,7 +195,29 @@ export function exec_sql<T = any>(command_sql: string, bind: BindingSpec = [], r
   
 }
 
+export async function save_user_config() {
+  const text = yaml.stringify(TEMP.user_config)
+  if (TEMP.backbone === "Neutralino") {
+    await Neutralino.filesystem.writeFile(data_path() + "/user_config.yaml", text)
+    return
+  }
+  const writer = await TEMP.user_config_handle!.createWritable()
+  await writer.write(text)
+  await writer.close()
+}
+
 export async function nuke_db() {
+  if (TEMP.backbone === "Neutralino") {
+    await exec_sql("PRAGMA foreign_keys = OFF")
+    try {
+      const tables = await exec_sql<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
+      for (const table of tables) await exec_sql(`DROP TABLE "${table.name.replaceAll('"', '""')}"`)
+      await exec_sql("PRAGMA user_version = 0")
+    } finally {
+      await exec_sql("PRAGMA foreign_keys = ON")
+    }
+    return
+  }
   let res
   // check
   try {

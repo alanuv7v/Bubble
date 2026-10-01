@@ -1,6 +1,11 @@
 node_modules
 data
 profiles
-public
+public/*
+!public/_headers
 ./src/.vite
 init
+/dist/
+/release/
+/bin/sqlite3/neutralinojs-ext-sqlite3*
+./ideas

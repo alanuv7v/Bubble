@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite';
+import { cpSync, copyFileSync } from 'node:fs';
 
 function style_only_hmr() {
   return {
@@ -15,10 +16,18 @@ function style_only_hmr() {
 
 export default defineConfig({
   publicDir: 'public',
-  plugins: [style_only_hmr()],
+  plugins: [style_only_hmr(), {
+    name: 'static-assets',
+    apply: 'build',
+    closeBundle() {
+      // These paths are set in UI code, so Vite cannot discover them as imports.
+      cpSync('icons', 'dist/icons', { recursive: true });
+      copyFileSync('assets/profile_fallback.webp', 'dist/assets/profile_fallback.webp');
+    },
+  }],
   build: {
     target: ['chrome120'],
-    outDir: '../dist',
+    outDir: 'dist',
     emptyOutDir: true,
   },
   resolve: {

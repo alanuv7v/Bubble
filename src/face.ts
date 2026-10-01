@@ -1,5 +1,5 @@
 import TEMP from "./TEMP.ts";
-import yaml from "yaml";
+import { save_user_config } from "./database.ts";
 import { visual_controls } from "./visual.ts";
 
 import t from "./tags.ts";
@@ -83,7 +83,7 @@ async function save_active_chat_cast() {
   const cast = await update_chat_cast(
     chat_id,
     TEMP.chat.speaker_id ?? null,
-    undefined,
+    TEMP.chat.listener_ids,
     TEMP.involved_bubby_ids,
     TEMP.chat as Chat
   )
@@ -157,7 +157,7 @@ async function set_live_chat_speaker(value: string) {
   }
 }
 
-const enter_chat = t.enter_chat(
+const enter_chat = t.chats_c(
   chat_list_c,
   creation_button(
     "Create Chat", 
@@ -318,7 +318,7 @@ async function render_bubby_list (bubbies: Bubby[]) {
     return t.div(
       {
         onclick () {
-          render_bubby_config(bubby)
+          TEMP.edited_bubby_id = bubby.id
           show_one_dom("Edit Bubby")
         }
       },
@@ -379,7 +379,7 @@ const prompt_c = t.prompt_c({
   spellcheck: false,
   contentEditable: "true",
   onkeydown: (event: KeyboardEvent) => {
-    if (event.key === "Enter" && event.shiftKey) {
+    if (event.key === "Chats" && event.shiftKey) {
       event.preventDefault();
       send();
     }
@@ -542,7 +542,7 @@ However, if the API of the provider significantly differs from OpenRouter's or O
   t.button({
     innerText: "Now you can chat.",
     onclick: () => {
-      show_one_dom("Enter");
+      show_one_dom("Chats");
     },
   }),
   t.div("You can always configure details later. Enjoy!"),
@@ -568,7 +568,7 @@ export function show_one_dom (title: keyof typeof nav) {
 
 
 const nav = {
-  Enter: enter_chat,
+  Chats: enter_chat,
   Chat: in_chat_c,
   Bubbies: bubbies_c,
   "LLM Configs": llm_configs_c,
@@ -583,7 +583,7 @@ const nav = {
 }
 
 const refresh: Partial<Record<keyof typeof nav, () => void | Promise<void>>> = {
-  Enter () {
+  Chats () {
     get_recent_entries("chats", 0, 10)
     .then(render_chat_list)
   },
@@ -603,20 +603,13 @@ const refresh: Partial<Record<keyof typeof nav, () => void | Promise<void>>> = {
     render_bubby_config(bubby)
   },
   async "User Config" () {
-    const visual = visual_controls()
-    // Visual settings have dedicated controls, so keep them out of the generic editor.
-    const config_for_editor = { ...TEMP.user_config }
-    delete (config_for_editor as Partial<typeof TEMP.user_config>).visual
-    const e = obj_editor(user_config_def, config_for_editor, {
+    const def = { ...user_config_def, visual: { render: visual_controls } }
+    const e = obj_editor(def, TEMP.user_config, {
       async save() {
-        return save_action(async () => {
-          const writer = await TEMP.user_config_handle?.createWritable()
-          await writer?.write(yaml.stringify(TEMP.user_config))
-          await writer?.close()
-        })
+        return save_action(save_user_config)
       },
     }) as HTMLDivElement
-    user_config_c.replaceChildren(visual, e)
+    user_config_c.replaceChildren(e)
   },
   async "LLM Config" () {
     if (!TEMP.edited_llm_config_id) return
@@ -644,8 +637,7 @@ export async function render() {
  return [
     t.stack_c(
       ...[
-        "Enter",
-        "Chat",
+        "Chats",
         "Bubbies",
         "LLM Configs",
         "User Config",

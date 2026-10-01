@@ -46,11 +46,14 @@ export function val_c (
     get_key: () => get_key(),
     is_duplicate
   }
-  const control = def?.__type
-    ? typed_renderers[def.__type]?.(field) ?? t.val_c()
-    : def && raw !== null && typeof raw === "object" && !Array.isArray(raw)
-      ? obj_c(raw, def)
-      : inferred_control(field)
+  // A field can supply its own control when the built-in types do not fit.
+  const control = def?.render
+    ? def.render(raw)
+    : def?.__type
+      ? typed_renderers[def.__type]?.(field) ?? t.val_c()
+      : def && raw !== null && typeof raw === "object" && !Array.isArray(raw)
+        ? obj_c(raw, def)
+        : inferred_control(field)
   control.classList.add("control")
   if (is_duplicate?.(raw)) mark_duplicate(control)
 
@@ -431,6 +434,8 @@ export function obj_editor (
     return t.button({
       innerText: k,
       async onclick () {
+        // Some browsers leave the edited field focused when a button is clicked.
+        (document.activeElement as HTMLElement)?.blur()
         stat_c.classList.add("pending")
         stat_c.innerText = await h(old_id)
         stat_c.classList.remove("pending")

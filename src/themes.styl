@@ -71,6 +71,15 @@
   --bg-color: var(--light);
   --button-grad: var(--light-grad);
   --error: rgb(232, 39, 71);
+  --accent: teal
+  
+  --alert: var(--accent);
+  --quote: var(--accent);
+  --value: var(--ui-color);
+  --text: var(--value);
+  --obj: var(--accent);
+  --dir: var(--accent-2);
+  --file: var(--accent);
 
   --hue-shift: 0;
   --saturation-shift: 0;
@@ -107,6 +116,7 @@ hsl2(hue, saturation, lightness)
   --border-color: hsl2(0, 11, 52);
   --mild-border-color: hsl2(18, 9, 39);
   --active-bg-color: hsl2(0, 16, 15);
+  --accent: hsl2(0, 55, 70)
   
   --hue-shift: 180;
   --border-rad: 0.5lh
@@ -138,16 +148,6 @@ hsl2(hue, saturation, lightness)
   --active-bg-color: hsl(136, 37, 90);
   --accent: rgb(213, 106, 205);
   --accent-2: rgb(219, 138, 228);
-  --alert: var(--accent);
-  --quote: var(--accent);
-
-  --value: var(--ui-color);
-  --text: var(--value);
-  
-  --obj: var(--accent);
-
-  --dir: var(--accent-2);
-  --file: var(--accent);
 }
 
 
@@ -205,6 +205,18 @@ hsl2(hue, saturation, lightness)
   }
   font-family: "DM Sans", "Inconsolata", "SUIT", "SUIT Variable";
 }
+
+
+@css {
+  input, button, select, *[contenteditable="true"], group-c, obj-c, list-c > *, guide-c {
+    background: color-mix(
+      in hsl,
+      var(--bg-color),
+      rgba(0,0,0,0) 80%
+    );
+  }
+}
+
 
 /* ========================================================================== */
 /* Glassy surface effect */
