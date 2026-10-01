@@ -7,20 +7,14 @@ Lightweight, locally stored user data.
 - Browser: OPFS SQLite database.
 - LLM API access: based on OpenRouter.
 
+Try the web version in https://bubble.sebbellc.com.
+
 To install dependencies:
 ```bash
 npm install
 ```
 
-To run the browser version:
+To run the localhost version:
 ```bash
 vite
 ```
-
-To build the web app:
-```bash
-pnpm build
-```
-Upload the resulting `dist` folder using Cloudflare Pages' Direct Upload. It includes `_headers`, which enables SQLite's browser storage.
-
-The Neutralino desktop build stores `bubble.sqlite`, `user_config.yaml`, and assets in the user's application data directory. Run `pnpm desktop:prepare` before packaging to copy the SQLite extension's prebuilt binary.
