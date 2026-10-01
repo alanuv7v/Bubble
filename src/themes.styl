@@ -56,7 +56,8 @@
 
 :root {
   
-  font-family: "SUIT", sans-serif;
+  
+  font-family: "DM Sans", "Inconsolata", "SUIT", "SUIT Variable";
   font-weight: 400;
 
   body {
@@ -140,16 +141,28 @@ hsl2(hue, saturation, lightness)
   /* 
     iMessage type looking, pastel colorful.
   */
-  --light: hsl(240, 14, 90);
-  --dark: rgb(78, 54, 77);
+  --light: hsl(229, 42%, 87%);
+  --dark: rgb(37, 39, 50);
   
-  --border-color: hsl(292, 88, 71);
-  --mild-border-color: rgb(140, 113, 215);
-  --active-bg-color: hsl(136, 37, 90);
-  --accent: rgb(213, 106, 205);
+  --border-color: hsla(310, 42%, 72%, 0.8);
+  --mild-border-color: rgba(144, 125, 196, 0.8);
+  --active-bg-color: hsla(136, 58%, 89%, 0.8);
+  --accent: rgb(215, 141, 210);
   --accent-2: rgb(219, 138, 228);
+
+  --border-rad: 0.75lh
+  
+  body {
+    background-image: url("../assets/bg/12.jpg");
+  }
 }
 
+:root.parade.dark {
+  /* 
+    iMessage type looking, pastel colorful.
+  */
+  --active-bg-color: hsla(215, 30%, 22%, 0.8);
+}
 
 /* Pro theme */
 :root.pro {
@@ -203,7 +216,6 @@ hsl2(hue, saturation, lightness)
   body {
     background-image: url("../assets/bg/11.jpg");
   }
-  font-family: "DM Sans", "Inconsolata", "SUIT", "SUIT Variable";
 }
 
 
@@ -212,7 +224,7 @@ hsl2(hue, saturation, lightness)
     background: color-mix(
       in hsl,
       var(--bg-color),
-      rgba(0,0,0,0) 80%
+      rgba(0,0,0,0) 70%
     );
   }
 }

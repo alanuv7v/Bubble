@@ -9,3 +9,5 @@ init
 /release/
 /bin/sqlite3/neutralinojs-ext-sqlite3*
 ./ideas
+.codex
+ideas

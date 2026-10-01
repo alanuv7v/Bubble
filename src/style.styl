@@ -977,15 +977,12 @@ edit-chat {
 edit-bubby {
 
   > div {
-    width: 20ch
     display: flex
     flex-direction: column
+    align-items: center
     gap: var(--space-sm)
-    > img {
-      width: 100%
-    }
-    > button {
-      width: 100%
+    img.profile {
+      width: 20ch
     }
   }
 }
@@ -1061,16 +1058,23 @@ user-config obj-c.visual {
 }
 
 asset-picker {
-  display: inline-block
+  display: flex
+  flex-direction: column
+  align-items: center
   max-width: 100%
-
+  > button {
+    min-width: 20ch
+    width: fit-content
+  }
   > section {
+    min-width: 40ch
     padding: var(--space-sm)
     border: 1px solid var(--mild-border-color)
     background: var(--bg-color)
     display: flex
     flex-direction: column
     gap: var(--space-sm)
+    border-radius: var(--border-rad)
   }
 
   > section[hidden] {
@@ -1080,6 +1084,7 @@ asset-picker {
   .files {
     max-height: 24lh
     overflow-y: auto
+    padding-right: 1px
   }
 
   .file {
@@ -1097,4 +1102,13 @@ asset-picker {
       object-fit: cover
     }
   }
+}
+
+controls-c {
+  width: 100%
+  height: 100%
+  display: flex
+  flex-direction: column
+  align-items: center
+  justify-content: center
 }
