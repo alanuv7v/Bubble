@@ -85,12 +85,8 @@ async function process_sse_line(
   const payload = trimmed.slice(5).trim()
   if (payload === '[DONE]') return true
 
-  try {
-    const parsed = jju.parse(payload)
-    await callback(parsed)
-  } catch (e) {
-    console.log(e)
-  }
+  const parsed = jju.parse(payload)
+  await callback(parsed)
 
   return false
 }
@@ -117,10 +113,10 @@ export async function stream_response_body(
     }
 
     buffer += decoder.decode()
-    if (buffer) {
-      await process_sse_line(buffer, callback)
-    }
+    if (buffer && await process_sse_line(buffer, callback)) return
+    throw new Error("Reply stream ended before completion")
   } finally {
+    await reader.cancel().catch(() => {})
     reader.releaseLock()
   }
 }

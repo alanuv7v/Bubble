@@ -1,6 +1,7 @@
 import { show_one_dom } from "../face"
 import t from "../tags"
 import confirm_btn from "./confirm_btn"
+import { report } from "../log"
 
 export default async function render_list_item<T>(
   item: T,
@@ -25,7 +26,7 @@ export default async function render_list_item<T>(
       row.remove()
     }).catch((error) => {
       delete_button!.disabled = false
-      error_c.innerText = (error as Error).message || String(error)
+      error_c.innerText = report(error, "Delete entry")
     })
   }) : undefined
   if (delete_button) {

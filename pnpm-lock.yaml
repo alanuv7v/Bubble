@@ -17,9 +17,6 @@ importers:
       '@types/jju':
         specifier: ^1.4.5
         version: 1.4.5
-      '@types/node':
-        specifier: ^26.6.1
-        version: 26.6.1
       '@types/object-path':
         specifier: ^0.11.4
         version: 0.11.4
@@ -69,6 +66,9 @@ importers:
         specifier: ^2.7.1
         version: 2.9.0
     devDependencies:
+      '@types/node':
+        specifier: ^26.6.1
+        version: 26.6.1
       '@types/path-browserify':
         specifier: ^1.0.3
         version: 1.0.3

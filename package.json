@@ -4,7 +4,6 @@
     "@neutralinojs/lib": "^6.9.0",
     "@sqlite.org/sqlite-wasm": "3.53.4-build1",
     "@types/jju": "^1.4.5",
-    "@types/node": "^26.6.1",
     "@types/object-path": "^0.11.4",
     "chalk": "^5.4.1",
     "date-fns": "^4.1.0",
@@ -27,9 +26,11 @@
     "build": "vite build",
     "serve": "node ./src/websocket/serve.ts",
     "open": "vite --host",
-    "desktop:prepare": "node scripts/copy_sqlite_extension.ts"
+    "desktop:prepare": "node scripts/copy_sqlite_extension.ts",
+    "desktop:build": "node scripts/build_desktop.ts"
   },
   "devDependencies": {
+    "@types/node": "^26.6.1",
     "@types/path-browserify": "^1.0.3",
     "@types/wicg-file-system-access": "^2023.10.7",
     "stylus": "^0.64.0"

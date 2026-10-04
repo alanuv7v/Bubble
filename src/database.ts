@@ -6,6 +6,7 @@ import user_config from "./user_config"
 import { merge } from "merge-anything"
 import Neutralino from "@neutralinojs/lib"
 import { data_path, native_batch, native_sql, start_native_db } from "./native_db"
+import { report } from "./log"
 
 const create_tables_sql = `--sql
 PRAGMA foreign_keys = ON;
@@ -136,7 +137,7 @@ export async function init() {
     }
 
     TEMP.worker.onerror = (e) => {
-      console.log('Worker crash:', e.message)
+      report(e.message, "Database worker crashed")
       for (const req of TEMP.db_pending!.values()) {
         req.reject(new Error(e.message || 'Database worker crashed'))
       }
@@ -176,7 +177,35 @@ export type AsEntry<T> = {
   [K in keyof T]: NonNullable<T[K]> extends object ? string : T[K]
 }
 
-export function exec_sql<T = any>(
+let db_queue: Promise<unknown> = Promise.resolve()
+
+// A transaction owns the connection until it commits or rolls back.
+function queue_db<T>(action: () => Promise<T>): Promise<T> {
+  const result = db_queue.then(action)
+  // Keep the queue usable; the caller still receives the original rejection.
+  db_queue = result.catch(() => {})
+  return result
+}
+
+export function exec_sql<T = any>(...args: Parameters<typeof direct_sql>): Promise<AsEntry<T>[]> {
+  return queue_db(() => direct_sql<T>(...args))
+}
+
+export function transaction<T>(action: (sql: typeof direct_sql) => Promise<T>): Promise<T> {
+  return queue_db(async () => {
+    await direct_sql("BEGIN TRANSACTION")
+    try {
+      const result = await action(direct_sql)
+      await direct_sql("COMMIT")
+      return result
+    } catch (error) {
+      await direct_sql("ROLLBACK").catch((error) => { report(error, "Rollback failed") })
+      throw error
+    }
+  })
+}
+
+function direct_sql<T = any>(
   command_sql: string, 
   bind: BindingSpec = [], 
   rowMode = "object", 
@@ -226,9 +255,24 @@ export async function nuke_db() {
     res = await TEMP.opfs_root_handle!.getDirectoryHandle("bubble_db")
   }
   catch (e) {
-    console.info("Nuked!", e, res)
+    if ((e as any)?.name === "NotFoundError") console.info("Nuked!")
+    else report(e, "Delete database")
     return
   }
   console.info("Nuke failed.", res)
   return
+}
+
+
+export async function nuke_opfs() {
+  try {
+    for await (const entry of TEMP.opfs_root_handle!.entries()) {
+      await TEMP.opfs_root_handle!.removeEntry(entry[0], { recursive: true })
+    }
+  }
+  catch (e) {
+    report(e, "Delete OPFS files")
+    return
+  }
+  console.info("Nuked!")
 }

@@ -2,6 +2,7 @@ import t from "./tags";
 import TEMP from "./TEMP";
 import Neutralino from "@neutralinojs/lib";
 import { data_path } from "./native_db";
+import { report } from "./log";
 
 function native_asset_path(folder: string, name = "") {
   for (const part of [folder, name]) {
@@ -31,8 +32,9 @@ export async function get_asset (name: string, folder?: string) {
     return await file_handle?.getFile()
   }
   catch (e) {
-    console.log(e)
-    console.trace()
+    // An unset or missing image uses the caller's fallback.
+    if ((e as any)?.name !== "NotFoundError" && (e as any)?.code !== "NE_FS_NOPATHE")
+      report(e, `Read asset ${name}`, "warn")
     return
   }
 }
@@ -44,10 +46,19 @@ export async function get_img_src (name: string, fallback = "") {
     return URL.createObjectURL(file)
   }
   catch (e) {
-    console.log(e)
-    console.trace()
-    return ""
+    report(e, `Load image ${name}`, "warn")
+    return fallback
   }
+}
+
+export async function set_img_src (img: HTMLImageElement, name: string, fallback = "") {
+  const src = await get_img_src(name, fallback)
+  if (img.src.startsWith("blob:")) URL.revokeObjectURL(img.src)
+  if (src.startsWith("blob:")) {
+    img.onload = img.onerror = () => URL.revokeObjectURL(src)
+  }
+  img.src = src
+  return src
 }
 
 async function convert_img(file: File|Blob, into: string, quality = 0.9): Promise<Blob|null> {
@@ -89,10 +100,14 @@ async function convert_img(file: File|Blob, into: string, quality = 0.9): Promis
 }
 
 
-export async function save_profile_image(file: File, id: string) {
+export async function make_profile_image(file: File, id: string) {
   const image = await convert_img(file, "webp")
   if (!image) throw new Error("Could not read profile image")
-  await save_asset("", new File([image], `${id}.webp`, { type: "image/webp" }))
+  return new File([image], `${id}.webp`, { type: "image/webp" })
+}
+
+export async function save_profile_image(file: File, id: string) {
+  await save_asset("", await make_profile_image(file, id))
 }
 
 export function is_image(name: string) {
@@ -200,7 +215,7 @@ export async function rename_asset(old_name: string, new_name: string): Promise<
     await writable.close()
     await root.removeEntry(old_name)
   } catch (error) {
-    await root.removeEntry(new_name).catch(() => {})
+    await root.removeEntry(new_name).catch((error) => { report(error, "Clean up failed asset write") })
     throw error
   }
 

@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync } from "node:fs"
+import { chmodSync, copyFileSync, mkdirSync } from "node:fs"
 import { createRequire } from "node:module"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -13,3 +13,4 @@ const target = fileURLToPath(new URL(`../bin/sqlite3/${name}`, import.meta.url))
 
 mkdirSync(dirname(target), { recursive: true })
 copyFileSync(source, target)
+if (process.platform !== "win32") chmodSync(target, 0o755)

@@ -1,6 +1,7 @@
 import t from "../tags"
 import { delete_asset, get_asset, is_image, list_assets, save_asset } from "../assets"
 import confirm_btn from "./confirm_btn"
+import { report } from "../log"
 
 type Options = {
   title: string
@@ -9,6 +10,8 @@ type Options = {
   selected?: string
   empty_label?: string
   show?: (name: string) => boolean
+  display_name?: (name: string) => string
+  prepare_upload?: (file: File) => Promise<File>
   on_select: (file: File | null, name: string) => string | void | Promise<string | void>
   on_delete?: (name: string) => void | Promise<void>
 }
@@ -32,7 +35,7 @@ export default function asset_picker(options: Options) {
   )
 
   function update_label() {
-    button.innerText = `${options.title}: ${selected || options.empty_label || "Choose"}`
+    button.innerText = `${options.title}: ${selected ? (options.display_name?.(selected) ?? selected) : (options.empty_label || "Choose")}`
   }
 
   async function choose(file: File | null, name: string) {
@@ -42,7 +45,7 @@ export default function asset_picker(options: Options) {
       panel.hidden = true
       status.innerText = ""
     } catch (error) {
-      status.innerText = String(error)
+      status.innerText = report(error, "Select asset")
     }
   }
 
@@ -59,7 +62,7 @@ export default function asset_picker(options: Options) {
         row.append(preview)
       }
       row.append(
-        t.button({ type: "button", innerText: name, onclick: () => void choose(file, name) }),
+        t.button({ type: "button", innerText: options.display_name?.(name) ?? name, onclick: () => void choose(file, name) }),
         confirm_btn("Delete", () => void remove(name))
       )
       return row
@@ -76,7 +79,7 @@ export default function asset_picker(options: Options) {
       else await options.on_delete?.(name)
       await refresh()
     } catch (error) {
-      status.innerText = String(error)
+      status.innerText = report(error, "Delete asset")
     }
   }
 
@@ -84,19 +87,20 @@ export default function asset_picker(options: Options) {
     const file = input.files?.[0]
     if (!file) return
     try {
-      await save_asset(options.folder, file)
+      const upload = options.prepare_upload ? await options.prepare_upload(file) : file
+      await save_asset(options.folder, upload)
       input.value = ""
       await refresh()
-      await choose(file, file.name)
+      await choose(upload, upload.name)
     } catch (error) {
-      status.innerText = String(error)
+      status.innerText = report(error, "Upload asset")
     }
   }
   button.onclick = async () => {
     panel.hidden = !panel.hidden
     if (panel.hidden) return
     try { await refresh() }
-    catch (error) { status.innerText = String(error) }
+    catch (error) { status.innerText = report(error, "List assets") }
   }
   update_label()
   return t.asset_picker(button, panel)

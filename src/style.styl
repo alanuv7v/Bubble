@@ -197,11 +197,6 @@ select {
 }
 
 .multiselect {
-  position: absolute;
-  z-index: 10;
-  left: 0;
-  bottom: 100%
-  min-width: 100%;
   max-height: 15lh;
   overflow: auto;
   background: var(--bg-color)
@@ -213,7 +208,18 @@ select {
   display: none;
 }
 
-.multiselect > label {
+.multiselect > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm)
+}
+
+.multiselect .close {
+  padding: var(--space-sm)
+}
+
+.multiselect .options > label {
   display: flex;
   align-items: center;
   gap: 0.5ch
@@ -663,7 +669,7 @@ request-c {
   
   wrap-c {
     flex-wrap: nowrap;
-    overflow: hidden;
+    overflow: visible;
     align-items: center;
     justify-content: space-between;
     prompt-c {
@@ -970,8 +976,10 @@ edit-chat, edit-bubby, llm-config, user-config {
 
 
 edit-chat {
-  min-width: 80ch
-  width: fit-content !important
+  width: fit-content
+  > * {
+    width: 100%
+  }
 }
 
 edit-bubby {
@@ -1111,4 +1119,25 @@ controls-c {
   flex-direction: column
   align-items: center
   justify-content: center
+}
+
+body > dialog {
+  // border-radius: var(--border-rad)
+  overflow: visible
+  min-width: 40ch
+  min-height: 20lh
+  color: var(--ui-color)
+  border: unset
+  outline: unset
+  padding: unset
+  background: unset
+  > button.close {
+    width: 100%
+  }
+}
+body > dialog:focus {
+  border: unset
+  outline: unset
+  padding: unset
+  background: unset
 }

@@ -1,5 +1,6 @@
 import { instantiate, TYPES } from "../definitions"
 import t from "../tags"
+import { report } from "../log"
 
 function run_fixer (def: Record<string, any>, raw_val: any): { ok: boolean, val?: any } {
   if (!def) return { ok: true, val: raw_val }
@@ -249,7 +250,8 @@ function dynamic_choice_control (field: FieldContext): HTMLElement {
   void load_choices().then((loaded) => {
     choices = loaded
     update_options()
-  }).catch(() => {
+  }).catch((error) => {
+    report(error, "Load choices")
     input.classList.add("error")
     select.replaceChildren(t.option("Could not load choices"))
   })
@@ -401,8 +403,9 @@ function instantiate_array_item (allow_def: Record<string, any>) {
     : instantiate(allow_def)
 }
 
-export function obj_c (obj: Record<string, any>, def?: Record<string, any>) {
+export function obj_c (obj: Record<string, any>, def?: Record<string, any>, hide_id = false) {
   const keys = new Set([...Object.keys(obj), ...Object.keys(def ?? {})])
+  if (hide_id) keys.delete("id")
   return t.obj_c(
     ...[...keys].map((key) => {
       const field_def = def?.[key]
@@ -448,9 +451,12 @@ export function obj_editor (
 
   return t.obj_editor(
     title ? t.h2(title) : {},
-    Array.isArray(obj)
-      ? arr_c(obj, def?.allows ?? { __type: "string" }, def?.__type === "set")
-      : obj_c(obj, def),
+    def?.render
+      ? def.render(obj)
+      : Array.isArray(obj)
+        ? arr_c(obj, def?.allows ?? { __type: "string" }, def?.__type === "set")
+        // Keep the saved ID out of the editor; it is only a database key.
+        : obj_c(obj, def, true),
     ...handler_trigger_btns,
     stat_c
   )

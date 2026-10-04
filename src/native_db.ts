@@ -2,17 +2,19 @@ import Neutralino from "@neutralinojs/lib"
 import { open, type Database } from "neutralinojs-ext-sqlite3"
 
 let db: Database | null = null
+let dir = ""
 
 export function data_path() {
-  return (window as any).NL_DATAPATH as string
+  return dir
 }
 
 export async function start_native_db() {
   // The extension's client uses the global Neutralino instance.
   (window as any).Neutralino = Neutralino
   Neutralino.init()
-  const dir = data_path()
-  if (!dir) throw new Error("Neutralino data path is unavailable")
+  // Desktop data stays in an ordinary folder, separate from the app bundle.
+  dir = await Neutralino.os.getPath("documents") + "/Bubble"
+  await Neutralino.filesystem.createDirectory(dir)
   db = await open({ path: `${dir}/bubble.sqlite` })
 }
 

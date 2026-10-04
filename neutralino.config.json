@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "defaultMode": "window",
   "port": 0,
-  "documentRoot": "/",
+  "documentRoot": "/dist",
   "url": "/",
   "enableServer": true,
   "enableNativeAPI": true,
