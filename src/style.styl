@@ -6,7 +6,7 @@
   box-sizing: border-box;
   caret-color: var(--light);
   text-wrap: auto;
-  font-size: 18px;
+  font-size: 16px;
 
   /* Shared rhythm for gaps, padding, and offsets. */
   --space-xs: 0.25lh;
@@ -109,7 +109,7 @@ nav {
 /* Form controls */
 /* ========================================================================== */
 
-*[contenteditable="true"], select {
+*[contenteditable="true"] {
   min-height: 2lh;
   padding: var(--space-sm);
   overflow: auto;
@@ -368,9 +368,6 @@ not-connected {
     footer {
       flex-wrap: nowrap;
       overflow: auto;
-      *:hover {
-        scale: unset !important;
-      }
     }
   }
   body {
@@ -547,8 +544,6 @@ group-c > *  {
 
 
 
-
-
 /* ========================================================================== */
 /* Chat, lists, and message layout */
 /* ========================================================================== */
@@ -580,8 +575,7 @@ chats-c {
   
   gap: var(--space-sm);
   align-items: center;
-  justify-content: center;
-  
+
   list-c > .item > .content {
     flex-direction: column
     flex-wrap: wrap
@@ -595,17 +589,29 @@ chats-c {
   }
 }
 
-list-c > .item {
+list-c {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: var(--space-sm);
-  padding: var(--space-md);
-  flex-wrap: wrap
-  transition: background 0.2s ease;
-  border-radius: var(--border-rad)
+  align-items: stretch
+  justify-content: flex-start;
+  
   flex-grow: 1
+  flex-shrink: 1
+  flex-basis: auto
+  min-height: 0
+  overflow: auto
+
+  > .item {
+    padding: var(--space-md);
+    border-radius: var(--border-rad);
+    transition: background 0.2s ease;
+    display: flex
+    flex-direction: row
+  }
   .content {
     display: flex
+    flex-wrap: wrap
     align-items: baseline
     > *:first-child {
       flex-grow: 1
@@ -692,6 +698,9 @@ request-c {
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-xs);
+    > * {
+      line-height: 1lh
+    }
   }
 }
 
@@ -932,10 +941,11 @@ bubbies-c {
 }
 bubbies-c > list-c {
   display: flex
+  flex-direction: row
   flex-wrap: wrap
-  padding: var(--space-sm)
+  align-items: center
+  justify-content: center
   gap: var(--space-sm)
-  flex-grow: 1
   > div {
     > img {
       width: 100%
@@ -1020,8 +1030,6 @@ chats-c, bubbies-c, llm-configs {
   > list-c {
     width: 100%
     flex-grow: 1
-    align-items: center
-    justify-content: center
   }
   > group-c {
     width: fit-content
@@ -1140,4 +1148,26 @@ body > dialog:focus {
   outline: unset
   padding: unset
   background: unset
+}
+
+logs-c {
+  display: flex
+  flex-direction: column
+  padding: 0.5lh
+  gap: 0.5lh
+  max-width: 80ch
+  width: 80ch
+  * {
+    white-space: break-spaces
+    text-align: left
+  }
+  pre {
+    padding: 0.5lh
+    background: var(--bg-color)
+  }
+  > .content {
+    display: flex
+    flex-direction: column
+    gap: 0.5lh
+  }
 }

@@ -33,11 +33,11 @@ export default function multi_select_picker(
     modal.replaceChildren(close, picker)
     if (!modal.open) modal.showModal()
   }
-  const button = t.button({
+  const root = t.button({
+    id,
     type: "button",
     onclick: open
-  })
-  const root = t.div({ id }, button) as HTMLDivElement & {
+  }) as HTMLButtonElement & {
     setOptions: (next_options: Option[], next_selected: string[]) => void
   }
 
@@ -45,7 +45,7 @@ export default function multi_select_picker(
   let current_selected = selected
   // Derive checkbox order from the available options to keep selections stable.
   const render = () => {
-    button.innerText = `${title} (${current_selected.length})`
+    root.innerText = `${title} (${current_selected.length})`
     list.replaceChildren(...current_options.map((option) => {
       const checkbox = t.input({
         type: "checkbox",

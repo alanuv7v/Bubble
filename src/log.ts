@@ -15,7 +15,7 @@ export function report(error: unknown, context = "", level: "error" | "warn" = "
   entries.push(text)
   if (entries.length > limit) entries.shift()
   if (list) {
-    list.append(t.pre({ textContent: text }))
+    list.append(t.pre({ textContent: text, className: level }))
     if (list.childElementCount > limit) list.firstElementChild?.remove()
   }
   console[level](text)
@@ -25,7 +25,7 @@ export function report(error: unknown, context = "", level: "error" | "warn" = "
 export function log_view() {
   if (panel) return panel
   list = t.div({ className: "content" }, ...entries.map((text) => t.pre({ textContent: text })))
-  panel = t.section({ id: "log" },
+  panel = t.logs_c(
     t.h2({ innerText: `Logs (last ${limit})` }),
     t.button({
       type: "button", innerText: "Clear",

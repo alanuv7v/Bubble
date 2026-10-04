@@ -121,7 +121,11 @@ export const init_sql = create_tables_sql
 
 export async function init() {
   if (TEMP.backbone === "Neutralino") {
-    await start_native_db()
+    await start_native_db(() => {
+      closing = true
+      TEMP.text_gen_aborter.abort()
+      return db_queue
+    })
   } else {
     TEMP.worker = new Worker(
       new URL('./worker.ts', import.meta.url),
@@ -178,9 +182,11 @@ export type AsEntry<T> = {
 }
 
 let db_queue: Promise<unknown> = Promise.resolve()
+let closing = false
 
 // A transaction owns the connection until it commits or rolls back.
 function queue_db<T>(action: () => Promise<T>): Promise<T> {
+  if (closing) return Promise.reject(new Error("Database is closing"))
   const result = db_queue.then(action)
   // Keep the queue usable; the caller still receives the original rejection.
   db_queue = result.catch(() => {})

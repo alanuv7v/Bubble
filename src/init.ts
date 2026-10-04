@@ -16,9 +16,7 @@ import { instantiate, LlmParams } from "./definitions.ts";
 import { apply_visual } from "./visual.ts";
 import { save_asset } from "./assets.ts";
 import { log_view, report } from "./log";
-
-//@ts-ignore
-import Irene_desc from "../defaults/Irene.ts"
+import Irene_desc from "./defaults/Irene.ts"
 
 // DEBUG
 Object.entries({
@@ -128,7 +126,7 @@ try {
     try {
       // A literal path lets Vite include the portrait in production builds.
       const profiles: [string, URL][] = [
-        [seed_ids.irene, new URL("../assets/Irine.webp", import.meta.url)]
+        [seed_ids.irene, new URL("../assets/Irene.webp", import.meta.url)]
       ]
       for (const [id, url] of profiles) {
         const response = await fetch(url)

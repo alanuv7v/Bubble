@@ -1,6 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/neutralinojs/neutralinojs/main/schemas/neutralino.config.schema.json",
-  "applicationId": "js.bubble",
+  "applicationId": "bubble",
+  "applicationIcon": "icon.png",
   "version": "1.0.0",
   "defaultMode": "window",
   "port": 0,
@@ -20,6 +21,7 @@
   }],
   "modes": {
     "window": {
+      "icon": "icon.png",
       "title": "Bubble",
       "width": 800,
       "height": 800,
@@ -28,7 +30,7 @@
       "center": true,
       "resizable": true,
       "injectGlobals": true,
-      "exitProcessOnClose": true
+      "exitProcessOnClose": false
     }
   },
   "cli": {
@@ -37,6 +39,16 @@
     "extensionsPath": "/bin/sqlite3",
     "distributionPath": "/release",
     "binaryVersion": "6.9.0",
-    "clientVersion": "6.9.0"
+    "clientVersion": "6.9.0",
+    "builder": {
+      "windows": {
+        "targets": {
+          "target": "nsis",
+          "icon": "icon.png",
+          "sidebarImage": "icon.png",
+          "headerImage": "icon.png"
+        }
+      }
+    }
   }
 }

@@ -56,13 +56,16 @@ function creation_button(
     type: "text",
     placeholder: "Name",
   }) as HTMLInputElement
-  return t.group_c(
-    { className: "horizontal" },
-    name_input,
-    t.button({
-      innerText: label,
-      onclick: () => create_named(name_input, prefix, create, refresh, on_created),
-    })
+  return t.div(
+    { className: "creation" },
+    t.group_c(
+      { className: "horizontal" },
+      name_input,
+      t.button({
+        innerText: label,
+        onclick: () => create_named(name_input, prefix, create, refresh, on_created),
+      })
+    ), stat_c
   )
 }
 
@@ -235,8 +238,7 @@ const enter_chat = t.chats_c(
       }
     ),
     refresh_chat_list
-  ),
-  stat_c
+  )
 ) as HTMLDivElement;
 
 function timestamp_to_info(timestamp: number) {
@@ -492,8 +494,18 @@ const in_chat_c = t.in_chat(
       t.group_c({ className: "horizontal" },
         t.button({ innerText: "Library" }, t.img({ src: "./icons/library.svg" })),
         t.button(
-          { innerText: "Req. Temp." },
-          t.img({ src: "./icons/template.svg" })
+          { 
+            innerText: "Req. Temp.",
+            onclick: () => {
+              if (!TEMP.chat.llm_config_id) {
+                show_one_dom("LLM Configs")
+                return
+              }
+              TEMP.edited_llm_config_id = TEMP.chat.llm_config_id
+              show_one_dom("LLM Config")
+            }
+          },
+          t.img({ src: "./icons/template.svg" }),
         )
       ),
       // WIP

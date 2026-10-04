@@ -1,7 +1,7 @@
 import t from "./tags";
 import TEMP from "./TEMP";
 import Neutralino from "@neutralinojs/lib";
-import { data_path } from "./native_db";
+import { data_path, ensure_dir } from "./native_db";
 import { report } from "./log";
 
 function native_asset_path(folder: string, name = "") {
@@ -135,7 +135,7 @@ async function asset_dir(folder: string) {
 export async function list_assets(folder: string) {
   if (TEMP.backbone === "Neutralino") {
     const path = native_asset_path(folder)
-    await Neutralino.filesystem.createDirectory(path)
+    await ensure_dir(path)
     const entries = await Neutralino.filesystem.readDirectory(path)
     return entries.filter((item) => item.type === "FILE")
       .map((item) => item.entry).sort((a, b) => a.localeCompare(b))
@@ -150,7 +150,7 @@ export async function list_assets(folder: string) {
 
 export async function save_asset(folder: string, file: File) {
   if (TEMP.backbone === "Neutralino") {
-    await Neutralino.filesystem.createDirectory(native_asset_path(folder))
+    await ensure_dir(native_asset_path(folder))
     await Neutralino.filesystem.writeBinaryFile(native_asset_path(folder, file.name), await file.arrayBuffer())
     return
   }

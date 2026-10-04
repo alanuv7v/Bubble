@@ -274,7 +274,7 @@ export const LlmParams = {
   },
   seed: {
     __type: "int",
-    default: 0,
+    default: null,
     min: 0,
     max: Infinity,
     nullable: true,
