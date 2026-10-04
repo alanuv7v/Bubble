@@ -34,9 +34,10 @@
   font-family: "Urbanist";
   src: local("Urbanist"), url(../fonts/Urbanist-VariableFont_wght.ttf) format("truetype");
 }
-/* 
------------
-*/
+
+hsl2(hue, saturation, lightness)
+  unquote("hsl(" + "calc(var(--hue-shift) + " + hue + ")," + saturation + "%," + lightness + "%" + ")")
+
 
 /* ========================================================================== */
 /* Shared palette and default theme */
@@ -65,14 +66,14 @@
     background-position: center;
   }
   
-  --border-color: rgb(158, 158, 158);
-  --mild-border-color: rgb(150 150 150);
-  --active-bg-color: rgb(25, 25, 25);
-  --ui-color: var(--dark);
+  --border-color: hsl2(0, 33, 70);
+  --mild-border-color: hsl2(0, 33, 60);
+  --active-bg-color: hsl2(0, 33, 10);
+  --ui-color: var(--dark); 
   --bg-color: var(--light);
   --button-grad: var(--light-grad);
   --error: rgb(232, 39, 71);
-  --accent: teal
+  --accent: hsl2(0, 80, 90);
   
   --alert: var(--accent);
   --quote: var(--accent);
@@ -82,7 +83,7 @@
   --dir: var(--accent-2);
   --file: var(--accent);
 
-  --hue-shift: 0;
+  --hue-shift: 200;
   --saturation-shift: 0;
   --lightness-shift: 0;
 
@@ -106,17 +107,14 @@
 /* Theme variants */
 /* ========================================================================== */
 
-hsl2(hue, saturation, lightness)
-  unquote("hsl(" + "calc(var(--hue-shift) + " + hue + ")," + saturation + "%," + lightness + "%" + ")")
-
 /* Cozy theme */
 :root.cozy {
 
   --light: hsl2(0, 20, 72);
   --dark: hsl2(0, 15, 17);
-  --border-color: hsl2(0, 11, 52);
-  --mild-border-color: hsl2(18, 9, 39);
-  --active-bg-color: hsl2(0, 16, 15);
+  --border-color: hsl2(0, 15, 52);
+  --mild-border-color: hsl2(18, 15, 40);
+  --active-bg-color: hsl2(0, 18, 15);
   --accent: hsl2(0, 55, 70)
   
   --hue-shift: 180;
@@ -127,12 +125,12 @@ hsl2(hue, saturation, lightness)
   }
 }
 
-:root.cozy.steel main {
-  filter: hue-rotate(200deg) saturate(0.7);
+:root.steel {
+  --hue-shift: 210
 }
 
-:root.cozy.forest main {
-  filter: hue-rotate(100deg) contrast(0.92) invert(0);
+:root.forest {
+  --hue-shift: 150
 }
 
 
@@ -204,6 +202,10 @@ hsl2(hue, saturation, lightness)
 /* Font-focused themes */
 :root.artsy {
   font-family: "Baskervville";
+  --hue-shift: 33;
+  body {
+    background-image: url("../assets/bg/15.jpg");
+  }
   start-c.pretty {
     position: relative;
     h1 {
@@ -212,9 +214,10 @@ hsl2(hue, saturation, lightness)
   }
 }
 
-:root.okay {
+:root.cool {
+  hue-shift: 220;
   body {
-    background-image: url("../assets/bg/11.jpg");
+    background-image: url("../assets/bg/9.jpg");
   }
 }
 
@@ -242,6 +245,15 @@ hsl2(hue, saturation, lightness)
         var(--bg-color),
         rgba(0,0,0,0) 50%
       );
+      > stack-c {
+        backdrop-filter: blur(4px);
+        box-shadow: unset
+      }
+    }
+
+    request-c {
+      box-shadow: unset;
+      outline: unset;
     }
     
     input, button, select, *[contenteditable="true"], group-c, obj-c, list-c > *, guide-c {

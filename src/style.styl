@@ -66,7 +66,6 @@ main {
     > * {
       width: 100%;
       border-radius: 0;
-      box-shadow: inset -1px -1px 0px 0px var(--mild-border-color);
     }
   }
   > article {
@@ -140,6 +139,8 @@ input, button, select, *[contenteditable="true"] {
   overflow: auto;
   
   outline: solid 1px var(--mild-border-color)
+  outline-offset: -1px
+
   background-color: var(--bg-color);
   border-radius: var(--border-rad);
   
@@ -161,7 +162,7 @@ button:hover, .key:hover, select:hover, *[contenteditable="true"]:hover, input:h
   z-index: 2;
   outline-color: var(--border-color)
   outline-width: 2px
-  outline-offset: -1px
+  outline-offset: -2px
 }
 
 select::after {
@@ -666,13 +667,7 @@ request-c {
   display: flex;
   flex-direction: column;
   gap: var(--space-sm);
-  box-shadow: inset 1px 0px 0px 0px var(--mild-border-color),
-  inset -1px 0px 0px 0px var(--mild-border-color),
-  inset 0px 1px 0px 0px var(--mild-border-color);
-  margin-left: -1px;
-  margin-right: -1px;
-  margin-bottom: -1px;
-  
+  outline: 2px solid var(--mild-border-color);
   wrap-c {
     flex-wrap: nowrap;
     overflow: visible;

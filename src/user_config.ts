@@ -1,6 +1,6 @@
 export default {
   visual: {
-    theme: ["dark", "cozy", "okay", "glassy"],
+    theme: ["dark", "cozy", "cool", "glassy"],
     stylesheet: "",
     background: "",
   },

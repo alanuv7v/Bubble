@@ -1,4 +1,5 @@
 import TEMP from "./TEMP.ts";
+import Neutralino from "@neutralinojs/lib";
 import { save_user_config } from "./database.ts";
 import { visual_controls } from "./visual.ts";
 
@@ -533,11 +534,19 @@ const llm_config_c = t.llm_config() as HTMLDivElement
 const controls_c = t.controls_c(
   t.button({
     innerText: "Fullscreen",
-    onclick: () => {
+    onclick: async () => {
+      if (TEMP.backbone === "Neutralino" && window.NL_OS === "Windows") {
+        if (await Neutralino.window.isFullScreen()) {
+          await Neutralino.window.exitFullScreen()
+        } else {
+          await Neutralino.window.setFullScreen()
+        }
+        return
+      }
       if (!document.fullscreenElement) {
-        document.documentElement.requestFullscreen();
+        await document.documentElement.requestFullscreen();
       } else if (document.exitFullscreen) {
-        document.exitFullscreen();
+        await document.exitFullscreen();
       }
     },
   })
