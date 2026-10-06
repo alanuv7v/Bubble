@@ -12,7 +12,7 @@
   "enableExtensions": true,
   "dataLocation": "system",
   "tokenSecurity": "one-time",
-  "nativeAllowList": ["app.*", "os.*", "filesystem.*", "extensions.*"],
+  "nativeAllowList": ["app.*", "window.*", "os.*", "filesystem.*", "extensions.*"],
   "extensions": [{
     "id": "sqlite3",
     "commandWindows": "\"${NL_PATH}/bin/sqlite3/neutralinojs-ext-sqlite3.exe\" --run",

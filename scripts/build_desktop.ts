@@ -1,3 +1,5 @@
+/// <reference types="node" />
+
 import "./copy_sqlite_extension.ts"
 import { spawnSync } from "node:child_process"
 import { chmodSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs"
