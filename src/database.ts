@@ -14,8 +14,8 @@ PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS llm_configs (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
-  api_key TEXT DEFAULT NULL,
-  api_url TEXT DEFAULT NULL,
+  API_key TEXT DEFAULT NULL,
+  API_URL TEXT DEFAULT NULL,
   params TEXT NOT NULL DEFAULT '{}'
 );
 

@@ -89,8 +89,8 @@ try {
     await create_entry("llm_configs", {
       id: seed_ids.roleplay,
       name: "Roleplay",
-      api_key: "",
-      api_url: "https://openrouter.ai/api/v1/chat/completions",
+      API_key: "",
+      API_URL: "https://openrouter.ai/api/v1/chat/completions",
       params: {
         ...instantiate(LlmParams) as LlmParams,
         model: "~google/gemini-flash-latest",

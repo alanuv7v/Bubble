@@ -32,7 +32,7 @@ export function visual_controls(visual: typeof TEMP.user_config.visual) {
   }
 
   return t.obj_c({ className: "visual" },
-    t.pair_c(t.key_c("theme classes"), classes),
+    t.pair_c(t.key_c("theme_classes"), classes),
     t.pair_c(asset_picker({
       title: "Stylesheet", folder: "themes", accept: ".css,text/css",
       selected: visual.stylesheet, empty_label: "default",

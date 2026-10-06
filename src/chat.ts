@@ -9,6 +9,7 @@ import { AsEntry, exec_sql, transaction } from "./database";
 import { set_img_src } from "./assets";
 import confirm_btn from "./ui_modules/confirm_btn";
 import { report } from "./log";
+import { epoch_to_dt, now_epoch } from "./datetime";
 
 
 export type TableEntryMap = {
@@ -492,11 +493,11 @@ function format_listener_property(listeners: Bubby[], property_path: string[]) {
   return blocks.map((block) => `${fence}text\n${block}\n${fence}`).join("\n\n")
 }
 
-const speaker_label_re = /^\s*\[([^\]\r\n]+)\]\s*:\s*/
+const speaker_label_regex = /^\s*\[([^\]\r\n]+)\]\s*:\s*/
 
 /** Read a starting `[name]:` prefix and lowercase its label for comparison. */
 function get_leading_speaker_label(content: string) {
-  return speaker_label_re.exec(content)?.[1]?.trim().toLocaleLowerCase()
+  return speaker_label_regex.exec(content)?.[1]?.trim().toLocaleLowerCase()
 }
 
 const template_replacers: Record<
@@ -666,13 +667,13 @@ export async function gen_text_req (
   }
 
   // Blank chat credentials should fall back to the listener's config.
-  const api_key = chat_llm_config.api_key?.trim() || bubby_llm_config.api_key?.trim()
-  if (!api_key) {
+  const API_key = chat_llm_config.API_key?.trim() || bubby_llm_config.API_key?.trim()
+  if (!API_key) {
     throw Error("API key is not configured.")
   }
 
-  const api_url = chat_llm_config.api_url?.trim() ||
-    bubby_llm_config.api_url?.trim() ||
+  const API_URL = chat_llm_config.API_URL?.trim() ||
+    bubby_llm_config.API_URL?.trim() ||
     "https://openrouter.ai/api/v1/chat/completions"
 
   // A shared call needs each selected listener's identity and a distinct reaction.
@@ -685,8 +686,8 @@ export async function gen_text_req (
   );
 
   return {
-    api_key,
-    api_url,
+    API_key,
+    API_URL,
     body: {
       ...merged_config,
       messages: request_messages
@@ -702,8 +703,9 @@ let gen_msg_id: Id | null = null
 
 // Claim generation before any await, and release it only after the final save.
 async function run_gen<T>(action: () => Promise<T>): Promise<T | undefined> {
-  if (gen_active) return
+  if (gen_active || [...message_controllers.values()].some((item) => item.content_c.isContentEditable || item.busy)) return
   gen_active = true
+  for (const controller of message_controllers.values()) refresh_gen_controls(controller)
   TEMP.text_gen_aborter = new AbortController()
   try {
     return await action()
@@ -729,18 +731,119 @@ async function delete_message(controller: MessageController) {
   }
 }
 
+function edit_message(controller: MessageController) {
+  if (controller.edit_btn.disabled) return
+  const { message, textgens, content_c } = controller
+  // Edit the raw text so markdown survives saving and rendering again.
+  content_c.innerText = textgens[message.picked]?.content ?? message.content ?? ""
+  content_c.contentEditable = "true"
+  content_c.onblur = () => save_edit(controller)
+  refresh_gen_controls(controller)
+  content_c.focus()
+}
+
+async function save_edit(ctrl: MessageController) {
+  const { message, textgens, content_c } = ctrl
+  if (!content_c.isContentEditable || ctrl.busy) return
+  const content = content_c.innerText
+  const selected = textgens[message.picked]
+  ctrl.busy = true
+  content_c.contentEditable = "false"
+  try {
+    // Both stored copies must agree; only the selected alternative is edited.
+    await update_entry("messages", message.id, { content })
+    if (selected) await exec_sql(
+      `UPDATE textgens SET content = ? WHERE rowid = (
+        SELECT rowid FROM textgens WHERE msg_id = ? ORDER BY created_at, rowid LIMIT 1 OFFSET ?
+      )`,
+      [content, message.id, message.picked]
+    )
+    message.content = content
+    if (selected) selected.content = content
+    content_c.innerHTML = format_displayed_msg(content)
+  } catch (error) {
+    report(error, "Edit message")
+    content_c.contentEditable = "true"
+  } finally {
+    ctrl.busy = false
+    refresh_gen_controls(ctrl)
+  }
+}
+
+async function fork_from_msg(ctrl: MessageController) {
+  if (ctrl.busy) return
+  ctrl.busy = true
+  refresh_gen_controls(ctrl)
+  ctrl.edit_btn.disabled = false
+  ctrl.edit_btn.innerText = "Done"
+  try {
+    const fork = await fork_chat(ctrl.message)
+    if (TEMP.chat === ctrl.chat) await load_chat(fork)
+  } catch (error) {
+    ctrl.content_c.append(t.error_c({ innerText: report(error, "Fork chat") }))
+  } finally {
+    ctrl.busy = false
+    refresh_gen_controls(ctrl)
+    ctrl.edit_btn.innerText = "Edit"
+  }
+}
+
+function fork_chat(message: Message) {
+  const transaction_callback = async (sql) => {
+    // Read current settings and the cut point before copying anything.
+    const source = parse_entry("chats", (await sql("SELECT * FROM chats WHERE id = ?", [message.chat_id]))[0] ?? null)
+    const range = (await sql("SELECT rowid, created_at FROM messages WHERE id = ? AND chat_id = ?", [message.id, message.chat_id]))[0]
+    if (!source || !range) throw new Error("Chat or message no longer exists")
+    // Chat names are unique; number repeated forks.
+    let name = `${source.name} (fork)`
+    let number = 2
+    while ((await sql("SELECT 1 FROM chats WHERE name = ?", [name])).length) {
+      name = `${source.name} (fork ${number++})`
+    }
+    const fork = await create_entry("chats", {
+      ...source, id: crypto.randomUUID(), name, created_at: now_epoch(), last_use_at: now_epoch()
+    }, true, "FAIL", sql)
+    await sql("INSERT INTO chat_bubbies SELECT ?, bubby_id FROM chat_bubbies WHERE chat_id = ?", [fork.id, source.id])
+    await sql("INSERT INTO chat_libraries SELECT ?, library_id FROM chat_libraries WHERE chat_id = ?", [fork.id, source.id])
+    // Copy through this message inclusively. Row order breaks timestamp ties.
+    const history = parse_entries("messages", await sql(
+      `SELECT * FROM messages WHERE chat_id = ? AND (
+        created_at < ? OR (created_at = ? AND rowid <= ?)
+      ) ORDER BY created_at, rowid`,
+      [source.id, range.created_at, range.created_at, range.rowid]
+    ))
+    for (const message of history) {
+      const copy = await create_entry("messages", {
+        ...message, id: crypto.randomUUID(), chat_id: fork.id
+      }, true, "FAIL", sql)
+      await sql(
+        `INSERT INTO textgens (msg_id, content, model, tokens, cost, created_at)
+          SELECT ?, content, model, tokens, cost, created_at FROM textgens
+          WHERE msg_id = ? ORDER BY created_at, rowid`,
+        [copy.id, message.id]
+      )
+    }
+    return fork
+  }
+  return transaction(transaction_callback)
+}
+
 async function message_controller (bubby: Bubby, chat: Chat, message: Message, textgens: TextGen[]) {
   const speaker_entries = await get_entries("bubbies", message.speaker_ids)
   const speakers = message.speaker_ids
     .map((id) => speaker_entries.find((speaker) => speaker.id === id))
-    .filter((speaker): speaker is Bubby => Boolean(speaker))
-  const display_name = message.speaker_ids.map((id) =>
-    speakers.find((speaker) => speaker.id === id)?.name ?? id
-  ).join(" & ") || bubby.name
+    .filter(s => s) as Bubby[]
+
+  const displayed_name = speakers.map(s => s.name).join(", ")
 
   const picked_content = (message.role === "user" && message.content !== null) ?
   message.content
   : textgens[message.picked]?.content ?? message.content ?? ""
+
+  
+  const picked_creation_epoch = (message.role === "user" && message.content !== null) ?
+  message.created_at
+  : textgens[message.picked]?.created_at ?? null
 
   const content_c = t.content_c({
     innerHTML: format_displayed_msg(picked_content)
@@ -752,54 +855,73 @@ async function message_controller (bubby: Bubby, chat: Chat, message: Message, t
     profile_img,
     t.h3({
       className: "name",
-      innerText: display_name
+      innerText: displayed_name
     }),
-    content_c
+    content_c,
   )
 
-  const delete_button = confirm_btn("X", () => void delete_message(controller))
-  Object.assign(delete_button, {
+  const delete_btn = confirm_btn("X", () => delete_message(controller))
+  Object.assign(delete_btn, {
     title: "Delete message"
   })
+  const edit_btn = t.button({
+    type: "button", innerText: "Edit", title: "Edit message",
+    onclick: () => edit_message(controller)
+  }) as HTMLButtonElement
+  const fork_btn = t.button({
+    type: "button", innerText: "Fork", title: "Fork chat through this message",
+    onclick: () => void fork_from_msg(controller)
+  }) as HTMLButtonElement
   const gen_label = t.span() as HTMLButtonElement
-  const previous_button = t.button({
+  const prev_btn = t.button({
     type: "button",
     innerText: "<",
     title: "Previous generation"
   }) as HTMLButtonElement
-  const next_button = t.button({
+  const next_btn = t.button({
     type: "button",
     innerText: ">",
     title: "Next generation"
   }) as HTMLButtonElement
 
-  const gen_controls_c = t.utils_c(delete_button)
+  const gen_controls_c = t.utils_c(
+    t.div({
+      className: "created-at",
+      innerText: picked_creation_epoch ? epoch_to_dt(picked_creation_epoch).toPlainDateTime().round("second").toLocaleString() : "?"
+    }),
+    edit_btn, 
+    fork_btn, 
+    delete_btn
+  )
   if (message.role === "assistant") {
     gen_controls_c.append(t.group_c(
-      previous_button,
+      prev_btn,
       gen_label,
-      next_button
+      next_btn
     ))
   }
   elem.append(gen_controls_c)
 
   const controller = {
+    busy: false,
     bubby,
-    speakers: speakers.length ? speakers : [bubby],
+    speakers: speakers.length > 0 ? speakers : [bubby],
     chat,
     message,
     textgens,
     elem,
     content_c,
-    delete_btn: delete_button,
+    edit_btn,
+    fork_btn,
+    delete_btn,
     gen_label,
-    prev_btn: previous_button,
-    next_btn: next_button
+    prev_btn,
+    next_btn
   }
   message_controllers.set(message.id, controller)
   refresh_gen_controls(controller)
-  previous_button.addEventListener("click", () => void select_gen(controller, -1))
-  next_button.addEventListener("click", () => void select_gen(controller, 1))
+  prev_btn.addEventListener("click", () => void select_gen(controller, -1))
+  next_btn.addEventListener("click", () => void select_gen(controller, 1))
   return controller
 }
 
@@ -808,13 +930,16 @@ function refresh_gen_controls(controller: MessageController) {
   const picked = Math.max(0, Math.min(controller.message.picked, Math.max(0, count - 1)))
   controller.message.picked = picked
   controller.gen_label.innerText = count ? `${picked + 1} / ${count}` : "1 / 1"
-  controller.prev_btn.disabled = gen_active || picked <= 0
-  controller.next_btn.disabled = gen_active
-  controller.delete_btn.disabled = gen_active && gen_msg_id === controller.message.id
+  const editing = controller.content_c.isContentEditable
+  const locked = gen_active || editing || controller.busy
+  controller.prev_btn.disabled = locked || picked <= 0
+  controller.next_btn.disabled = locked
+  controller.delete_btn.disabled = editing || controller.busy || (gen_active && gen_msg_id === controller.message.id)
+  controller.edit_btn.disabled = controller.fork_btn.disabled = locked
 }
 
 async function select_gen(controller: MessageController, direction: -1 | 1) {
-  if (gen_active) return
+  if (controller.next_btn.disabled) return
   const next_index = controller.message.picked + direction
   if (next_index < 0) return
 
@@ -856,7 +981,7 @@ const format_chunk = (text: string) => pipe(text, (chunk) =>
 );
 
 function strip_leading_speaker_label(content: string, speakers: Bubby[]) {
-  const match = speaker_label_re.exec(content)
+  const match = speaker_label_regex.exec(content)
   if (!match) return content
 
   // Remove a redundant whole-reply prefix before saving; per-character labels carry distinct reactions.
@@ -864,10 +989,7 @@ function strip_leading_speaker_label(content: string, speakers: Bubby[]) {
   // redundant label for the whole group; preserve labels for each speaker.
   if (speakers.length > 1) {
     const group_labels = [
-      speakers.map((speaker) => speaker.name).join(" & "),
-      speakers.map((speaker) => speaker.id).join(" & "),
       speakers.map((speaker) => speaker.name).join(", "),
-      speakers.map((speaker) => speaker.id).join(", ")
     ]
     if (!group_labels.includes(match[1].trim())) return content
   }
@@ -975,7 +1097,7 @@ async function gen_message (
       content: text,
       tokens: 0, // to be implemented later
       cost: 0, // to be implemented later
-      created_at: Temporal.Now.instant().epochMilliseconds
+      created_at: now_epoch(),
     }
     const gens = await transaction(async (sql) => {
       await create_entry("textgens", llm_gen_entry, false, "FAIL", sql)
@@ -1079,7 +1201,7 @@ export async function send() {
       id: crypto.randomUUID(),
       speaker_ids: [speaker_id],
       listener_id: first_listener_id,
-      created_at: Temporal.Now.instant().epochMilliseconds,
+      created_at: now_epoch(),
       picked: 0,
     } : null
 
@@ -1090,7 +1212,7 @@ export async function send() {
       id: crypto.randomUUID(),
       speaker_ids: listener_ids,
       listener_id: speaker_id,
-      created_at: Temporal.Now.instant().epochMilliseconds,
+      created_at: now_epoch(),
       picked: 0,
     }
 
@@ -1121,6 +1243,7 @@ export async function send() {
 }
 
 export async function load_chat(chat: Chat) {
+  message_controllers.clear()
   const owner = TEMP.chat = structuredClone(chat)
   const cast = await sync_chat_bubbies(chat.id, await get_chat_bubby_ids(chat.id))
   if (TEMP.chat !== owner) return

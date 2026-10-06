@@ -13,6 +13,7 @@ import asset_picker from "./ui_modules/asset_picker";
 import multi_select_picker from "./ui_modules/multi_select_picker.ts";
 import render_list_item from "./ui_modules/render_list.ts";
 import { log_view, report } from "./log";
+import { now_epoch } from "./datetime.ts";
 
 
 const chat_list_c = t.list_c()
@@ -233,7 +234,7 @@ const enter_chat = t.chats_c(
         name,
         speaker_id: null,
         listener_ids: [],
-        created_at: Temporal.Now.instant().epochMilliseconds,
+        created_at: now_epoch(),
         last_use_at: null,
         llm_config_id: null,
       }
@@ -283,12 +284,6 @@ async function render_chat_list (chats: Chat[]) {
   }
   const render_item = async (chat: Chat, bubbies: Bubby[]) => {
     return t.div(
-      { 
-        onclick () {
-          show_one_dom("Chat")
-          void load_chat(chat).catch((error) => { stat_c.innerText = report(error, "Open chat") })
-        }
-      },
       t.div(
         { className: "info" },
         t.h2({ innerText: chat.name }),
@@ -305,11 +300,15 @@ async function render_chat_list (chats: Chat[]) {
     await delete_entry("chats", chat.id)
     if (TEMP.chat.id === chat.id) TEMP.chat.id = undefined
   }
+  function onclick (chat) {
+    show_one_dom("Chat")
+    void load_chat(chat).catch((error) => { stat_c.innerText = report(error, "Open chat") })
+  }
   const children = await Promise.all(
     chats.map(async chat => {
       
       const bubbies = await get_chat_bubbies(chat.id)
-      const dom = await render_list_item(chat, chats => render_item(chats, bubbies), edit_item, delete_item)
+      const dom = await render_list_item(chat, () => onclick(chat), chats => render_item(chats, bubbies), edit_item, delete_item)
       const bubby_images = await Promise.all(bubbies.map(async (bubby) => {
         const img = t.img({ className: "profile", alt: bubby.name, title: bubby.name }) as HTMLImageElement
         await set_img_src(img, `${bubby.id}.webp`, "assets/profile_fallback.webp")
@@ -337,15 +336,15 @@ async function render_llm_configs(configs: LlmConfig[]) {
     TEMP.edited_llm_config_id = c.id
     show_one_dom("LLM Config")
   }
+  const onclick = (config: LlmConfig) => {
+    TEMP.edited_llm_config_id = config.id
+    show_one_dom("LLM Config")
+  }
   const render_item = (c: LlmConfig) => t.div({
-    onclick: () => {
-      TEMP.edited_llm_config_id = c.id
-      show_one_dom("LLM Config")
-    }
   }, t.div({ innerText: c.name }))
   const delete_item = (c: LlmConfig) => delete_entry("llm_configs", c.id)
   const children = await Promise.all(
-    configs.map(async config => await render_list_item(config, render_item, undefined, delete_item))
+    configs.map(async config => await render_list_item(config, () => onclick(config), render_item, undefined, delete_item))
   )
   return children
 }
@@ -354,8 +353,8 @@ const llm_configs_c = t.llm_configs(
   llm_config_list_c,
   creation_button("Create LLM Config", "LLM Config", (name) => create_entry("llm_configs", {
     name,
-    api_key: "",
-    api_url: "https://openrouter.ai/api/v1/chat/completions",
+    API_key: "",
+    API_URL: "https://openrouter.ai/api/v1/chat/completions",
     params: instantiate(LlmParams),
   }), refresh_llm_config_list)
 )
@@ -535,7 +534,7 @@ const controls_c = t.controls_c(
   t.button({
     innerText: "Fullscreen",
     onclick: async () => {
-      if (TEMP.backbone === "Neutralino" && window.NL_OS === "Windows") {
+      if (TEMP.backbone === "Neutralino") {
         if (await Neutralino.window.isFullScreen()) {
           await Neutralino.window.exitFullScreen()
         } else {

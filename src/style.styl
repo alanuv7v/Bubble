@@ -31,11 +31,6 @@
   background-color: var(--active-bg-color);
 }
 
-
-message-c content-c * {
-  animation: unset;
-}
-
 b,
 strong {
   font-weight: 700;
@@ -139,7 +134,7 @@ input, button, select, *[contenteditable="true"] {
   overflow: auto;
   
   outline: solid 1px var(--mild-border-color)
-  outline-offset: -1px
+  outline-offset: 0px
 
   background-color: var(--bg-color);
   border-radius: var(--border-rad);
@@ -162,7 +157,7 @@ button:hover, .key:hover, select:hover, *[contenteditable="true"]:hover, input:h
   z-index: 2;
   outline-color: var(--border-color)
   outline-width: 2px
-  outline-offset: -2px
+  outline-offset: -1px
 }
 
 select::after {
@@ -180,7 +175,6 @@ select::after {
   cursor: text
   min-width: 5ch
   white-space: break-spaces
-  max-width: 80ch
 }
 button {
   white-space: nowrap;
@@ -234,13 +228,6 @@ select {
 utils-c {
   display: flex;
   gap: var(--space-xs);
-}
-
-message-c > utils-c {
-  opacity: 100%;
-  align-items: center;
-  align-self: flex-end;
-  gap: 0.4em;
 }
 
 message-c {
@@ -609,6 +596,7 @@ list-c {
     transition: background 0.2s ease;
     display: flex
     flex-direction: row
+    cursor: pointer;
   }
   .content {
     display: flex
@@ -628,7 +616,6 @@ list-c > .item > .content {
   display: flex
   gap: var(--space-sm);
   flex: 1;
-  cursor: pointer;
 }
 
 list-c > .item:hover {
@@ -752,6 +739,7 @@ message-c {
     width: 100%;
     margin-top: var(--space-sm);
     justify-content: flex-end;
+    align-items: baseline;
     opacity: 0%;
     transition: opacity 0.2s
     gap: var(--space-sm);

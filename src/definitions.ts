@@ -294,10 +294,10 @@ export const LlmConfig = {
   name: {
     __type: "string"
   },
-  api_key: {
+  API_key: {
     __type: "string"
   },
-  api_url: {
+  API_URL: {
     __type: "string"
   },
   params: {
@@ -309,8 +309,8 @@ export const LlmConfig = {
 export type LlmConfig = {
   id: Id,
   name: string,
-  api_key: string,
-  api_url: string,
+  API_key: string,
+  API_URL: string,
   params: LlmParams
 }
 
@@ -334,8 +334,8 @@ export type LlmParams = {
 }
 
 export type GeneralRequestTemplate = {
-  api_key: string, 
-  api_url: string,
+  API_key: string, 
+  API_URL: string,
   body: LlmParams
 }
 

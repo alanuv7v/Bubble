@@ -2,6 +2,10 @@ import { instantiate, TYPES } from "../definitions"
 import t from "../tags"
 import { report } from "../log"
 
+function to_pascal_case(str: string) {
+  return str.split("_").map(s => s[0].toUpperCase() + s.slice(1)).join(" ")
+}
+
 function run_fixer (def: Record<string, any>, raw_val: any): { ok: boolean, val?: any } {
   if (!def) return { ok: true, val: raw_val }
 
@@ -403,7 +407,7 @@ function instantiate_array_item (allow_def: Record<string, any>) {
     : instantiate(allow_def)
 }
 
-export function obj_c (obj: Record<string, any>, def?: Record<string, any>, hide_id = false) {
+export function obj_c (obj: Record<string, any>, def?: Record<string, any>, hide_id = false, pascal_case = true) {
   const keys = new Set([...Object.keys(obj), ...Object.keys(def ?? {})])
   if (hide_id) keys.delete("id")
   return t.obj_c(
@@ -413,7 +417,10 @@ export function obj_c (obj: Record<string, any>, def?: Record<string, any>, hide
         const value = instantiate({ [key]: field_def })[key]
         obj[key] = Array.isArray(value) ? [...value] : value
       }
-      return t.pair_c(t.key_c(key), ...val_c(key, obj, field_def))
+      return t.pair_c(
+        t.key_c(pascal_case ? to_pascal_case(key) : key), 
+        ...val_c(key, obj, field_def)
+      )
     })
   ) as HTMLDivElement
 }

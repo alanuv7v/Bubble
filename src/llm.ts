@@ -12,7 +12,7 @@ export const GEN_TEXT = {
 
     console.info("Text Generation", template)
 
-    return fetch(template.api_url || 'https://openrouter.ai/api/v1/chat/completions', {
+    return fetch(template.API_URL || 'https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${template.api_key}`,

@@ -5,11 +5,12 @@ import { report } from "../log"
 
 export default async function render_list_item<T>(
   item: T,
+  onclick: () => any, 
   render_item: (item: T) => HTMLElement | Promise<HTMLElement>,
   edit_item?: (item: T) => any,
-  delete_item?: (item: T) => Promise<unknown>
+  delete_item?: (item: T) => Promise<unknown>,
 ) {
-  const row = t.div({ className: "item" })
+  const row = t.div({ className: "item", onclick })
   const content = await render_item(item)
   content.classList.add("content")
 

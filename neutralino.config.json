@@ -30,7 +30,7 @@
       "center": true,
       "resizable": true,
       "injectGlobals": true,
-      "exitProcessOnClose": false
+      "exitProcessOnClose": true
     }
   },
   "cli": {
