@@ -44,11 +44,26 @@ export async function mount_window_bar() {
     fullscreen_button(),
     control("X", () => Neutralino.app.exit())
   )
-  bar.style.cssText = "display: flex; flex-shrink: 0; min-height: 2lh; z-index: 999;"
+  bar.style.cssText = "display: flex; flex-shrink: 0; min-height: 2lh; z-index: 999; overflow: clip; min-height: 5px;"
 
   // Reserve space above main rather than covering its content with a fixed bar.
   document.body.append(bar)
 
   // Only the empty/title area drags; the buttons remain ordinary clickable controls.
-  await Neutralino.window.setDraggableRegion(drag)
+  let draggable = false
+  async function update_drag() {
+    const enabled = !await Neutralino.window.isMaximized()
+    if (enabled === draggable) return
+    if (enabled) await Neutralino.window.setDraggableRegion(drag)
+    else await Neutralino.window.unsetDraggableRegion(drag)
+    draggable = enabled
+  }
+
+  // Maximized windows stay put; restoring the window enables dragging again.
+  for (const name of ["windowMaximize", "windowRestore"]) {
+    await Neutralino.events.on(name, () => {
+      void update_drag().catch((error) => report(error, "Update window dragging"))
+    })
+  }
+  await update_drag()
 }

@@ -21,6 +21,10 @@ const chat_list_c = t.list_c()
 const stat_c = t.stat_c() as HTMLElement;
 let view_id = 0
 
+function show_stat (text: string) {
+  stat_c.innerText = text
+  setTimeout(() => stat_c.innerText = "", 3000)
+}
 
 const randname = (prefix: string = "") => prefix + " " + Temporal.Now.zonedDateTimeISO().toPlainDateTime().round("second").toLocaleString()
 
@@ -39,11 +43,11 @@ async function create_named(
   try {
     const created = await create(name)
     name_input.value = ""
-    stat_c.innerText = "Created."
+    show_stat("Created.")
     on_created?.(created.id)
     await refresh?.()
   } catch (e) {
-    stat_c.innerText = report(e, "Create entry")
+    show_stat(report(e, "Create entry"))
   }
 }
 
@@ -52,7 +56,8 @@ function creation_button(
   prefix: string,
   create: (name: string) => Promise<{ id: string }>,
   refresh?: () => Promise<unknown> | unknown,
-  on_created?: (id: string) => void
+  on_created?: (id: string) => void,
+  direction = "horizontal"
 ) {
   const name_input = t.input({
     type: "text",
@@ -61,7 +66,7 @@ function creation_button(
   return t.div(
     { className: "creation" },
     t.group_c(
-      { className: "horizontal" },
+      { className: direction },
       name_input,
       t.button({
         innerText: label,
@@ -100,7 +105,7 @@ function paged_list<K extends TableName>(
       }))
     } catch (error) {
       const message = report(error, `Load ${table}`)
-      if (request === latest) stat_c.innerText = message
+      if (request === latest) show_stat(message)
     }
   }
   return refresh
@@ -132,7 +137,7 @@ async function set_live_chat_listeners(listener_ids: string[]) {
   } catch (e) {
     const message = report(e, "Set listeners")
     if (TEMP.chat !== owner) return
-    stat_c.innerText = message
+    show_stat(message)
     const current = await get_entry("chats", chat_id)
     if (current && TEMP.chat === owner) {
       Object.assign(TEMP.chat, current)
@@ -214,7 +219,7 @@ async function set_live_chat_speaker(value: string) {
     const message = report(e, "Set speaker")
     if (TEMP.chat !== owner) return
     TEMP.chat.speaker_id = previous_speaker_id ?? null
-    stat_c.innerText = message
+    show_stat(message)
     const current = await get_entry("chats", chat_id)
     if (current && TEMP.chat === owner) {
       Object.assign(TEMP.chat, current)
@@ -302,7 +307,7 @@ async function render_chat_list (chats: Chat[]) {
   }
   function onclick (chat) {
     show_one_dom("Chat")
-    void load_chat(chat).catch((error) => { stat_c.innerText = report(error, "Open chat") })
+    void load_chat(chat).catch((error) => show_stat(report(error, "Open chat")))
   }
   const children = await Promise.all(
     chats.map(async chat => {
@@ -326,7 +331,7 @@ const list_c_c = t.list_c()
 const refresh_bubby_list = paged_list("bubbies", list_c_c, render_bubby_list)
 const bubbies_c = t.bubbies_c(
   list_c_c,
-  creation_button("Create Bubby", "Bubby", (name) => create_bubby(name, ""),
+  creation_button("Create", "Bubby", (name) => create_bubby(name, ""),
     refresh_bubby_list)
 )
 
@@ -351,7 +356,7 @@ async function render_llm_configs(configs: LlmConfig[]) {
 const refresh_llm_config_list = paged_list("llm_configs", llm_config_list_c, render_llm_configs)
 const llm_configs_c = t.llm_configs(
   llm_config_list_c,
-  creation_button("Create LLM Config", "LLM Config", (name) => create_entry("llm_configs", {
+  creation_button("Create", "LLM Config", (name) => create_entry("llm_configs", {
     name,
     API_key: "",
     API_URL: "https://openrouter.ai/api/v1/chat/completions",
@@ -467,9 +472,9 @@ const in_chat_c = t.in_chat(
                   return
                 }
                 const resumed = await resume_last_reply()
-                if (!resumed) stat_c.innerText = "No interrupted reply to resume."
+                if (!resumed) show_stat("No interrupted reply to resume.")
               } catch (e) {
-                stat_c.innerText = report(e, "Resume")
+                show_stat(report(e, "Resume"))
               }
             },
           },
@@ -580,6 +585,7 @@ However, if the API of the provider significantly differs from OpenRouter's or O
       TEMP.edited_bubby_id = id;
       show_one_dom("Edit Bubby");
     },
+    "vertical"
   ),
   t.div(`Or talk to our sample bubbies.`),
 
@@ -592,6 +598,7 @@ However, if the API of the provider significantly differs from OpenRouter's or O
       TEMP.edited_bubby_id = id;
       show_one_dom("Edit Bubby");
     },
+    "vertical"
   ),
   t.div(`Or go anonymous.`),
 
@@ -621,7 +628,7 @@ export function show_one_dom (title: keyof typeof nav) {
   doms.forEach(d => d.style.display = "none")
   nav[title].style.display = "flex"
   if (refresh[title]) Promise.resolve().then(() => refresh[title]!()).catch((error) => {
-    stat_c.innerText = report(error, `Open ${title}`)
+    report(report(error, `Open ${title}`))
   })
 }
 

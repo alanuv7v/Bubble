@@ -15,7 +15,7 @@ export const GEN_TEXT = {
     return fetch(template.API_URL || 'https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${template.api_key}`,
+        'Authorization': `Bearer ${template.API_key}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(template.body),

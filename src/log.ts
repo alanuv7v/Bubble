@@ -26,7 +26,7 @@ export function log_view() {
   if (panel) return panel
   list = t.div({ className: "content" }, ...entries.map((text) => t.pre({ textContent: text })))
   panel = t.logs_c(
-    t.h2({ innerText: `Logs (last ${limit})` }),
+    t.h2({ innerText: `Logs` }),
     t.button({
       type: "button", innerText: "Clear",
       onclick: () => { entries.length = 0; list!.replaceChildren() }

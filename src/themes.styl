@@ -39,25 +39,13 @@ hsl2(hue, saturation, lightness)
   unquote("hsl(" + "calc(var(--hue-shift) + " + hue + ")," + saturation + "%," + lightness + "%" + ")")
 
 
-/* ========================================================================== */
-/* Shared palette and default theme */
-/* ========================================================================== */
-
-:root {
-  --light: white;
-  --dark: black;
-  --light-grad: linear-gradient(to bottom, hsl(0deg 0% 95%), hsl(0deg 0% 90%) 80%, hsl(0deg 0% 85%) 100%);
-  --dark-grad: linear-gradient(to top, hsl(0deg 0% 15%), hsl(0deg 0% 30%) 80%, hsl(0deg 0% 35%) 100%);
-  caret-color: var(--dark);
-}
-
 /* 
 -----------
 */
 
+
 :root {
-  
-  
+
   font-family: "DM Sans", "Inconsolata", "SUIT", "SUIT Variable";
   font-weight: 400;
 
@@ -65,13 +53,27 @@ hsl2(hue, saturation, lightness)
     background-size: cover;
     background-position: center;
   }
+
+  
+
+  --hue-shift: 200;
+  --saturation-shift: 0;
+  --lightness-shift: 0;
+  --border-rad: 0;
+
+  --light: hsl2(0,50,90);
+  --dark: hsl2(0,20,5);
+
+  /* Default Light Theme */
+
+  --bg-color: var(--light);
+  --ui-color: var(--dark);
+  
+  --distinct-bg-color: hsl2(0, 20, 80);
+  --active-bg-color: hsl2(0, 20, 70);
   
   --border-color: hsl2(0, 33, 70);
   --mild-border-color: hsl2(0, 33, 60);
-  --active-bg-color: hsl2(0, 33, 10);
-  --ui-color: var(--dark); 
-  --bg-color: var(--light);
-  --button-grad: var(--light-grad);
   --error: rgb(232, 39, 71);
   --accent: hsl2(0, 80, 90);
   
@@ -83,12 +85,6 @@ hsl2(hue, saturation, lightness)
   --dir: var(--accent-2);
   --file: var(--accent);
 
-  --hue-shift: 200;
-  --saturation-shift: 0;
-  --lightness-shift: 0;
-
-  --border-rad: 0;
-
 }
 
 
@@ -97,10 +93,12 @@ hsl2(hue, saturation, lightness)
 /* ========================================================================== */
 
 :root.dark {
-  --ui-color: var(--light);
   --bg-color: var(--dark);
-  --button-grad: var(--dark-grad);
-  caret-color: var(--light);
+  --ui-color: var(--light);
+  
+  
+  --distinct-bg-color: hsl2(0, 20, 10);
+  --active-bg-color: hsl2(0, 30, 20);
 }
 
 /* ========================================================================== */
@@ -222,15 +220,6 @@ hsl2(hue, saturation, lightness)
 }
 
 
-@css {
-  input, button, select, *[contenteditable="true"], group-c, obj-c, list-c > *, guide-c {
-    background: color-mix(
-      in hsl,
-      var(--bg-color),
-      rgba(0,0,0,0) 70%
-    );
-  }
-}
 
 
 /* ========================================================================== */
@@ -239,15 +228,17 @@ hsl2(hue, saturation, lightness)
 
 @css {
   :root.glassy {
+    --blur-px: 8px;
     main {
       background: color-mix(
         in hsl,
         var(--bg-color),
-        rgba(0,0,0,0) 50%
+        rgba(0,0,0,0) 75%
       );
       > stack-c {
-        backdrop-filter: blur(4px);
-        box-shadow: unset
+        backdrop-filter: blur(var(--blur-px));
+        background: unset;
+        box-shadow: unset;
       }
     }
 
@@ -260,9 +251,9 @@ hsl2(hue, saturation, lightness)
       background: color-mix(
         in hsl,
         var(--bg-color),
-        rgba(0,0,0,0) 80%
+        rgba(0,0,0,0) 50%
       );
-      backdrop-filter: blur(4px);
+      backdrop-filter: blur(var(--blur-px));
     }
 
     input:focus, button:focus, select:focus, *[contenteditable="true"]:focus, list-c > .item:hover {
@@ -279,7 +270,7 @@ hsl2(hue, saturation, lightness)
         var(--bg-color),
         rgba(0,0,0,0) 40%
       );
-      backdrop-filter: blur(8px);
+      backdrop-filter: blur(var(--blur-px));
     }
   }
 }
