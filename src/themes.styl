@@ -36,7 +36,7 @@
 }
 
 hsl2(hue, saturation, lightness)
-  unquote("hsl(" + "calc(var(--hue-shift) + " + hue + ")," + saturation + "%," + lightness + "%" + ")")
+  unquote("hsl(" + "calc(var(--hue-shift) + " + hue + "), " + "calc(var(--sat-scale) * " + saturation + "%), " + "calc(var(--lit-scale) * " + lightness + "%)" + ")")
 
 
 /* 
@@ -55,25 +55,25 @@ hsl2(hue, saturation, lightness)
   }
 
   
-
-  --hue-shift: 200;
-  --saturation-shift: 0;
-  --lightness-shift: 0;
   --border-rad: 0;
 
-  --light: hsl2(0,50,90);
-  --dark: hsl2(0,20,5);
+  --hue-shift: 130;
+  --sat-scale: 0.5;
+  --lit-scale: 1;
 
   /* Default Light Theme */
+
+  --light: hsl2(0,50,90);
+  --dark: hsl2(0,30,30);
 
   --bg-color: var(--light);
   --ui-color: var(--dark);
   
-  --distinct-bg-color: hsl2(0, 20, 80);
-  --active-bg-color: hsl2(0, 20, 70);
+  --distinct-bg-color: hsl2(0, 25, 80);
+  --active-bg-color: hsl2(0, 25, 75);
   
-  --border-color: hsl2(0, 33, 70);
-  --mild-border-color: hsl2(0, 33, 60);
+  --border-color: hsl2(0, 33, 40);
+  --mild-border-color: hsl2(0, 33, 50);
   --error: rgb(232, 39, 71);
   --accent: hsl2(0, 80, 90);
   
@@ -93,12 +93,24 @@ hsl2(hue, saturation, lightness)
 /* ========================================================================== */
 
 :root.dark {
+  
+  --hue-shift: 200;
+  --sat-scale: 1;
+  --lit-scale: 1;
+
+  --light: hsl2(0,50,90);
+  --dark: hsl2(0,20,5);
+
   --bg-color: var(--dark);
   --ui-color: var(--light);
   
-  
   --distinct-bg-color: hsl2(0, 20, 10);
-  --active-bg-color: hsl2(0, 30, 20);
+  --active-bg-color: hsl2(0, 30, 25);
+
+  --border-color: hsl2(0, 33, 70);
+  --mild-border-color: hsl2(0, 33, 60);
+  --error: rgb(232, 39, 71);
+  --accent: hsl2(0, 80, 90);
 }
 
 /* ========================================================================== */
@@ -132,13 +144,13 @@ hsl2(hue, saturation, lightness)
 }
 
 
-/* Parade theme */
-:root.parade {
+/* Party theme */
+:root.party {
   /* 
     iMessage type looking, pastel colorful.
   */
   --light: hsl(229, 42%, 87%);
-  --dark: rgb(37, 39, 50);
+  --dark: rgb(78, 59, 77);
   
   --border-color: hsla(310, 42%, 72%, 0.8);
   --mild-border-color: rgba(144, 125, 196, 0.8);
@@ -171,8 +183,8 @@ hsl2(hue, saturation, lightness)
   }
 
   --hue-shift: 0;
-  --saturation-shift: 0;
-  --lightness-shift: 0;
+  --sat-scale: 0;
+  --lit-scale: 0;
 
   --border-rad: 0.25lh;
   

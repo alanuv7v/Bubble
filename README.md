@@ -1,7 +1,7 @@
 # Bubble
 
 LLM chat interface.
-Lightweight, locally stored user data.
+Lightweight, clean, locally stores user data.
 
 - Desktop: powered by Neutralinojs.
 - Browser: OPFS SQLite database.
