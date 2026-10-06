@@ -10,7 +10,7 @@ export async function enable_window_resize() {
 
   // Invisible strips INSIDE the window: no border, padding, or layout changes.
   const edges = t.resize_c()
-  edges.style.cssText = "position:fixed;inset:0;pointer-events:none;z-index:2147483647"
+  edges.style.cssText = "position: fixed; inset: 0; pointer-events: none; z-index: 900"
   let stop_drag = () => {}
   let busy = false
 

@@ -18,6 +18,7 @@ import { save_asset } from "./assets.ts";
 import { log_view, report } from "./log";
 import Irene_desc from "./defaults/Irene.ts"
 import { enable_window_resize } from "./window_resize"
+import { mount_window_bar } from "./window_bar"
 
 // DEBUG
 Object.entries({
@@ -145,6 +146,9 @@ try {
     else localStorage.setItem("v", "1")
   }
 
+  if (TEMP.backbone === "Neutralino") {
+    void mount_window_bar().catch((error) => report(error, "Enable window bar", "warn"))
+  }
 
   // Mount and select the first screen together, so hidden panels never flash during startup.
   q("main").replaceChildren(...await render())

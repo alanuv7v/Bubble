@@ -1,5 +1,5 @@
 import TEMP from "./TEMP.ts";
-import Neutralino from "@neutralinojs/lib";
+import { fullscreen_button, show_inspector } from "./window_bar";
 import { save_user_config } from "./database.ts";
 import { visual_controls } from "./visual.ts";
 
@@ -530,25 +530,28 @@ const edit_bubby_c = t.edit_bubby() as HTMLDivElement
 const edit_chat_c = t.edit_chat() as HTMLDivElement
 const user_config_c = t.user_config() as HTMLDivElement
 const llm_config_c = t.llm_config() as HTMLDivElement
+const inspector_hint = t.p({
+  hidden: true,
+  innerText: "Open DevTools: F12 or Ctrl+Shift+I on Windows/Linux; Cmd+Option+I on macOS."
+})
 const controls_c = t.controls_c(
+  (() => {
+    const dom = fullscreen_button()
+    dom.innerText = "Fullscreen"
+    return dom
+  })(),
   t.button({
-    innerText: "Fullscreen",
-    onclick: async () => {
-      if (TEMP.backbone === "Neutralino") {
-        if (await Neutralino.window.isFullScreen()) {
-          await Neutralino.window.exitFullScreen()
-        } else {
-          await Neutralino.window.setFullScreen()
-        }
+    type: "button", innerText: "Show inspector",
+    onclick: () => {
+      // Browser pages cannot open their built-in DevTools; show the shortcut instead.
+      if (TEMP.backbone !== "Neutralino" || window.NL_OS !== "Windows") {
+        inspector_hint.hidden = !inspector_hint.hidden
         return
       }
-      if (!document.fullscreenElement) {
-        await document.documentElement.requestFullscreen();
-      } else if (document.exitFullscreen) {
-        await document.exitFullscreen();
-      }
-    },
-  })
+      void show_inspector().catch((error) => report(error, "Show inspector"))
+    }
+  }),
+  inspector_hint
 )
 const guide_c = t.guide_c(
   t.div(`Welcome to Bubble.

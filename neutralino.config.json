@@ -35,7 +35,9 @@
       "maximize": false,
       "useSavedState": false,
       "width": 800,
-      "height": 800
+      "height": 800,
+      "enableInspector": true,
+      "openInspectorOnStartup": false
     }
   },
   "cli": {
