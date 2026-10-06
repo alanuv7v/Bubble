@@ -23,14 +23,19 @@
     "window": {
       "icon": "icon.png",
       "title": "Bubble",
-      "width": 800,
-      "height": 800,
       "minWidth": 800,
       "minHeight": 800,
       "center": true,
       "resizable": true,
       "injectGlobals": true,
-      "exitProcessOnClose": true
+      "exitProcessOnClose": true,
+
+      "fullScreen": false,
+      "borderless": true,
+      "maximize": false,
+      "useSavedState": false,
+      "width": 800,
+      "height": 800
     }
   },
   "cli": {

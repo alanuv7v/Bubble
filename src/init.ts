@@ -17,6 +17,7 @@ import { apply_visual } from "./visual.ts";
 import { save_asset } from "./assets.ts";
 import { log_view, report } from "./log";
 import Irene_desc from "./defaults/Irene.ts"
+import { enable_window_resize } from "./window_resize"
 
 // DEBUG
 Object.entries({
@@ -50,6 +51,10 @@ try {
 
   // The worker and asset handle are per-page state; only default-data seeding is one-time.
   await db.init()
+  if (TEMP.backbone === "Neutralino") {
+    // Optional window controls must not block startup.
+    void enable_window_resize().catch((error) => report(error, "Enable window resize", "warn"))
+  }
   // Optional visuals must not stop the app from opening.
   try { await apply_visual() }
   catch (error) { report(error, "Could not apply theme", "warn") }
