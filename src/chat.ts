@@ -10,6 +10,7 @@ import { set_img_src } from "./assets";
 import confirm_btn from "./ui_modules/confirm_btn";
 import { report } from "./log";
 import { epoch_to_dt, now_epoch } from "./datetime";
+import shift_messages from "./utils/infinite_scroll";
 
 
 export type TableEntryMap = {
@@ -126,20 +127,22 @@ export async function get_messages_before(
   return messages.toReversed()
 }
 
-async function get_messages_before_message(message: Message, limit = 50) {
+async function get_message_batch(message: Message, limit = 50, direction: "older" | "newer" = "older") {
   // Keep the cursor stable when timestamps tie or the boundary message is deleted.
+  const compare = direction === "older" ? "<" : ">"
+  const order = direction === "older" ? "DESC" : "ASC"
   const messages = await query("messages",
     `SELECT rowid, * FROM messages
       WHERE chat_id = ? AND (
-        created_at < ?
-        OR (created_at = ? AND rowid < COALESCE(?, (SELECT rowid FROM messages WHERE id = ?)))
+        created_at ${compare} ?
+        OR (created_at = ? AND rowid ${compare} COALESCE(?, (SELECT rowid FROM messages WHERE id = ?)))
       )
-      ORDER BY created_at DESC, rowid DESC
+      ORDER BY created_at ${order}, rowid ${order}
       LIMIT ?`,
     [message.chat_id, message.created_at, message.created_at,
       (message as Message & { rowid?: number }).rowid ?? null, message.id, limit]
   )
-  return messages.toReversed()
+  return direction === "older" ? messages.toReversed() : messages
 }
 
 function parse_id_list(value: unknown): Id[] {
@@ -598,7 +601,7 @@ export async function gen_text_req (
   before_message?: Message
 ) {
   const history = before_message
-    ? await get_messages_before_message(before_message, max_input_messages)
+    ? await get_message_batch(before_message, max_input_messages)
     : await get_recent_messages(gen_context.chat.id, 0, max_input_messages)
 
   const is_group_chat = (await get_chat_bubby_ids(gen_context.chat.id)).length > 2
@@ -697,22 +700,29 @@ export async function gen_text_req (
 
 
 type MessageController = Awaited<ReturnType<typeof message_controller>>
-const message_controllers = new Map<Id, MessageController>()
 let gen_active = false
 let gen_msg_id: Id | null = null
 
+// The UI owns its controller. Only mounted messages participate in chat controls.
+function mounted_messages(): MessageController[] {
+  const elements = Array.from(
+    q("interactions-c")!.querySelectorAll("message-c")
+  ) as (HTMLElement & { controller?: MessageController })[]
+  return (elements ?? []).flatMap((elem) => elem.controller ? [elem.controller] : [])
+}
+
 // Claim generation before any await, and release it only after the final save.
 async function run_gen<T>(action: () => Promise<T>): Promise<T | undefined> {
-  if (gen_active || [...message_controllers.values()].some((item) => item.content_c.isContentEditable || item.busy)) return
+  if (gen_active || mounted_messages().some((item) => item.content_c.isContentEditable || item.busy)) return
   gen_active = true
-  for (const controller of message_controllers.values()) refresh_gen_controls(controller)
+  for (const controller of mounted_messages()) refresh_gen_controls(controller)
   TEMP.text_gen_aborter = new AbortController()
   try {
     return await action()
   } finally {
     gen_active = false
     gen_msg_id = null
-    for (const controller of message_controllers.values()) refresh_gen_controls(controller)
+    for (const controller of mounted_messages()) refresh_gen_controls(controller)
   }
 }
 
@@ -723,7 +733,6 @@ async function delete_message(controller: MessageController) {
   try {
     await delete_entry("messages", controller.message.id)
     controller.elem.remove()
-    message_controllers.delete(controller.message.id)
   } catch (error) {
     controller.delete_btn.disabled = false
     controller.elem.classList.add("error")
@@ -918,7 +927,7 @@ async function message_controller (bubby: Bubby, chat: Chat, message: Message, t
     prev_btn,
     next_btn
   }
-  message_controllers.set(message.id, controller)
+  Object.assign(elem, { controller, message })
   refresh_gen_controls(controller)
   prev_btn.addEventListener("click", () => void select_gen(controller, -1))
   next_btn.addEventListener("click", () => void select_gen(controller, 1))
@@ -1140,6 +1149,7 @@ async function gen_message (
 
 export async function resume_last_reply() {
   return run_gen(async () => {
+    if (!await latest_chat_view()) return false
     const owner = TEMP.chat
     const chat = structuredClone(TEMP.chat) as Chat
     if (!chat.id) throw Error("Chat ID not specified")
@@ -1156,14 +1166,13 @@ export async function resume_last_reply() {
     const reply_character = await get_entry("bubbies", message.speaker_ids[0])
     if (!original_speaker || !reply_character) return false
 
-    const controller = message_controllers.get(message.id) ?? await message_controller(
+    const controller = mounted_messages().find((item) => item.message.id === message.id) ?? await message_controller(
       reply_character,
       chat,
       message,
       []
     )
-    const interactions = q("interactions-c") as HTMLElement
-    if (TEMP.chat === owner && !controller.elem.isConnected) interactions.append(controller.elem)
+    if (TEMP.chat === owner && !controller.elem.isConnected) append_message(controller.elem)
     await gen_message(original_speaker, controller, true)
     return true
   })
@@ -1171,13 +1180,13 @@ export async function resume_last_reply() {
 
 export async function send() {
   return run_gen(async () => {
+    if (!await latest_chat_view()) return
     const owner = TEMP.chat
     const chat = structuredClone(TEMP.chat) as Chat
     if (!chat.id) throw Error("Chat ID not specified");
 
     // GET DOM
     const prompt_c = q("prompt-c")! as HTMLDivElement;
-    const interaction_list = q("interactions-c")!;
     const prompt = prompt_c.innerText as string;
 
     // GET CHAT AND CHARACTERS
@@ -1228,9 +1237,9 @@ export async function send() {
     // Append the user turn only when the prompt contains text.
     if (saved_user_msg) {
       const user_message_controller = await message_controller(speaker, chat, saved_user_msg, [])
-      if (TEMP.chat === owner) interaction_list.append(user_message_controller.elem)
+      if (TEMP.chat === owner) append_message(user_message_controller.elem)
     }
-    if (TEMP.chat === owner) interaction_list.append(assistant_message_controller.elem);
+    if (TEMP.chat === owner) append_message(assistant_message_controller.elem);
 
     // ACTUALLY GENERATE THE TEXT
     try {
@@ -1242,8 +1251,27 @@ export async function send() {
   })
 }
 
+function message_limit() {
+  const count = TEMP.user_config.chat.visual.messages_in_view
+  return Number.isFinite(count) ? Math.max(1, Math.floor(count)) : 20
+}
+
+async function latest_chat_view() {
+  const owner = TEMP.chat
+  if (q("interactions-c")!.dataset.latest !== "false") return true
+  await load_chat(owner)
+  return TEMP.chat.id === owner.id
+}
+
+function append_message(elem: HTMLElement) {
+  const container = q("interactions-c")! as HTMLElement
+  container.append(elem)
+  while (container.childElementCount > message_limit()) container.firstElementChild!.remove()
+}
+
 export async function load_chat(chat: Chat) {
-  message_controllers.clear()
+  const interaction_c = q("interactions-c")! as HTMLDivElement
+  interaction_c.onscroll = null
   const owner = TEMP.chat = structuredClone(chat)
   const cast = await sync_chat_bubbies(chat.id, await get_chat_bubby_ids(chat.id))
   if (TEMP.chat !== owner) return
@@ -1251,40 +1279,69 @@ export async function load_chat(chat: Chat) {
   /*
     OPEN CHAT
   */
-  const interaction_c = q("interactions-c")! as HTMLDivElement
   await refresh_chat_bubby_selects(owner)
 
   /* SHOW MESSAGES */
-  const history = await get_recent_messages(chat.id, 0, 20)
+  const limit = message_limit()
+  const batch = Math.max(20, limit)
+  const history = await get_recent_messages(chat.id, 0, batch)
   if (TEMP.chat !== owner) return
-  const message_elements = await render_history(owner, history)
+  const message_elements = await render_history(owner, history.slice(-limit))
   if (TEMP.chat !== owner) return
   interaction_c.replaceChildren(...message_elements)
-  const last_message_element = message_elements.at(-1)
-  if (last_message_element) last_message_element.scrollIntoView({ behavior: "smooth" });
+  interaction_c.dataset.latest = "true"
+  interaction_c.scrollTop = interaction_c.scrollHeight
+  // Our helper handles anchoring; automatic browser anchoring would compete with it.
+  interaction_c.style.overflowAnchor = "none"
+  let last_top = interaction_c.scrollTop
+  let busy = false
+  let pending = history.slice(0, Math.max(0, history.length - limit))
+  let pending_direction = "older"
+  let edge_id = (history.at(-limit) ?? history[0])?.id
+  const ends = { older: history.length < batch ? history[0]?.id : undefined, newer: history.at(-1)?.id }
 
-  let oldest = history[0]
-  const more = t.button({
-    type: "button", innerText: "Load older messages", hidden: history.length < 20,
-    onclick: async () => {
-      if (!oldest || TEMP.chat !== owner) return
-      more.disabled = true
-      try {
-        const older = await get_messages_before_message(oldest, 20)
-        const elements = await render_history(owner, older)
-        if (TEMP.chat !== owner) return
-        more.after(...elements)
-        oldest = older[0] ?? oldest
-        more.innerText = "Load older messages"
-        more.hidden = older.length < 20
-      } catch (error) {
-        more.innerText = `${report(error, "Load older messages")}. Retry`
-      } finally {
-        more.disabled = false
+  interaction_c.onscroll = async () => {
+    const top = interaction_c.scrollTop
+    const direction = top < last_top ? "older" : "newer"
+    const moved = top !== last_top
+    last_top = top
+    if (!moved || busy || gen_active || TEMP.chat !== owner) return
+    const distance = direction === "older" ? top : interaction_c.scrollHeight - top - interaction_c.clientHeight
+    if (distance > 100) return
+    const edge = (direction === "older" ? interaction_c.firstElementChild : interaction_c.lastElementChild) as
+      (HTMLElement & { message?: Message }) | null
+    const message = edge?.message
+    if (!message || ends[direction] === message.id) return
+    busy = true
+    try {
+      // Retain one batch of records, not detached message UIs. Shift one row at a time.
+      if (!pending.length || edge_id !== message.id || pending_direction !== direction) {
+        pending = await get_message_batch(message, batch, direction)
+        edge_id = message.id
+        pending_direction = direction
       }
+      if (TEMP.chat !== owner) return
+      if (!pending.length) {
+        ends[direction] = message.id
+        if (direction === "newer") interaction_c.dataset.latest = "true"
+        return
+      }
+      const item = direction === "older" ? pending.at(-1)! : pending[0]
+      const elements = await render_history(owner, [item])
+      if (TEMP.chat !== owner || gen_active) return
+      if ((direction === "older" ? interaction_c.firstElementChild : interaction_c.lastElementChild) !== edge) return
+      if (!shift_messages(interaction_c, elements, direction, limit)) return
+      if (direction === "older") pending.pop()
+      else pending.shift()
+      edge_id = item.id
+      interaction_c.dataset.latest = "false"
+      last_top = interaction_c.scrollTop
+    } catch (error) {
+      report(error, "Load message history")
+    } finally {
+      busy = false
     }
-  }) as HTMLButtonElement
-  interaction_c.prepend(more)
+  }
 }
 
 async function render_history(chat: Chat, history: Message[]) {
@@ -1306,6 +1363,7 @@ async function render_history(chat: Chat, history: Message[]) {
           innerText: "<Message speaker is unavailable>"
         })
       )
+      Object.assign(err, { message })
       message_elements.push(err)
       continue
     }

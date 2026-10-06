@@ -459,7 +459,7 @@ const in_chat_c = t.in_chat(
           t.img({ src: "./icons/takeoff.svg" })
         ),
         t.button(
-          { innerText: "Abort", onclick: () => TEMP.text_gen_aborter.abort() },
+          { innerText: "Stop", onclick: () => TEMP.text_gen_aborter.abort() },
           t.img({ src: "./icons/abort.svg" })
         ),
         t.button(
@@ -613,12 +613,12 @@ However, if the API of the provider significantly differs from OpenRouter's or O
   t.details(
     t.summary("How is my data kept?"),
     t.div(`In a desktop app:
-Your data is kept in a SQLite DB file in your dedvice's filesystem.
+Your data is kept in a SQLite DB file in your device's filesystem.
 
 In a browser:
-Your data is kept in your OPFS(Origin Private File System), meaning your browser, ultimately your device.
+Your data is kept in your OPFS(Origin Private File System), which means your browser, and ultimately your device.
 
-While this very app stores all personal data in your device only, the LLM API provider you are using might retain usage data, depending on their policies and your settings. So be sure to check them.`),
+While this very app stores all personal data in your device only, the LLM API provider you use might retain usage data, depending on their policies and your settings. So check them.`),
   ),
 ) as HTMLDivElement;
 

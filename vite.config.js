@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import { cpSync, copyFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 function style_only_hmr() {
   return {

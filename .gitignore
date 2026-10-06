@@ -16,3 +16,5 @@ release
 AGENTS.md
 .tmp
 windows_launcher_explained.c
+./test
+./test.md

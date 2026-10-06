@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Message scroll demo</title>
+<style>
+  body { max-width: 640px; margin: 32px auto; padding: 16px; font: 16px system-ui; }
+  #messages { height: 400px; overflow: auto; border: 1px solid #aaa; overflow-anchor: none; }
+  message-c { display: block; padding: 16px; border-bottom: 1px solid #ddd; }
+  message-c:nth-child(even) { background: #f5f5f5; }
+  button { padding: 8px 12px; }
+</style>
+<h1>Message scroll demo</h1>
+<p>Scroll up for older messages, down for newer ones. Only 20 message elements stay mounted.</p>
+<div id="messages"></div>
+<p id="status"></p>
+<button id="older">Older</button>
+<button id="newer">Newer</button>
+<button id="latest">Latest</button>
+<script type="module">
+  import shift_messages from './src/utils/infinite_scroll.ts'
+
+  const container = document.querySelector('#messages')
+  const status = document.querySelector('#status')
+  const total = 100
+  const limit = 20
+  let start = total - limit
+  let last_top = 0
+
+  function render(from, count) {
+    return Array.from({ length: count }, (_, offset) => {
+      const index = from + offset
+      const elem = document.createElement('message-c')
+      const title = document.createElement('strong')
+      title.textContent = `Message ${index + 1}`
+      const text = document.createElement('p')
+      // Different heights help expose position jumps that equal-height rows can hide.
+      text.textContent = 'A little conversation, with room to breathe. '.repeat(index % 5 + 1)
+      elem.append(title, text)
+      return elem
+    })
+  }
+
+  function show_status(note = '') {
+    status.textContent = `Messages ${start + 1}–${start + limit} of ${total}. Mounted: ${container.childElementCount}. ${note}`
+  }
+
+  function shift(direction) {
+    const count = Math.min(3, direction === 'older' ? start : total - start - limit)
+    if (!count) return
+    const from = direction === 'older' ? start - count : start + limit
+    if (!shift_messages(container, render(from, count), direction, limit)) {
+      show_status('Keep scrolling; opposite-edge messages are still visible.')
+      return
+    }
+    start += direction === 'older' ? -count : count
+    last_top = container.scrollTop
+    show_status()
+  }
+
+  function latest() {
+    start = total - limit
+    container.replaceChildren(...render(start, limit))
+    container.scrollTop = container.scrollHeight
+    last_top = container.scrollTop
+    show_status()
+  }
+
+  container.addEventListener('scroll', () => {
+    const top = container.scrollTop
+    const previous = last_top
+    last_top = top
+    // Ignore the helper's position correction; only user movement advances history.
+    if (top < previous && top < 100) shift('older')
+    else if (top > previous && container.scrollHeight - top - container.clientHeight < 100) shift('newer')
+  }, { passive: true })
+  document.querySelector('#older').onclick = () => shift('older')
+  document.querySelector('#newer').onclick = () => shift('newer')
+  document.querySelector('#latest').onclick = latest
+  latest()
+</script>
+</html>

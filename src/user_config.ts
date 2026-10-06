@@ -7,6 +7,7 @@ export default {
   chat: {
     visual: {
       render_message_as_markdown: true,
+      messages_in_view: 20,
     },
     safety: {
       sanitize_message: true,
@@ -17,6 +18,9 @@ export default {
 
 export const user_config_def = {
   chat: {
+    visual: {
+      messages_in_view: { __type: "int", min: 1, default: 20 }
+    },
     max_input_messages: {
       __type: "int"
     },

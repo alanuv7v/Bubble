@@ -44,7 +44,7 @@ export default function mark_quotes(text: string): string {
 
     const active = stack.at(-1)
     if (active?.close === char) {
-      result += `</span>${char}`
+      result += `${char}</span>`
       stack.pop()
       continue
     }
